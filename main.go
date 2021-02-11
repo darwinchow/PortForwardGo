@@ -179,6 +179,7 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "Success")
 
 	go func() {
+		Setting.Update.Lock()
 		Setting.mu.Lock()
 		if Setting.Config.Rules == nil {
 			Setting.Config.Rules = make(map[string]Rule)
@@ -206,6 +207,7 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		Setting.mu.Unlock()
+		Setting.Update.Unlock()
 	}()
 	return
 }
@@ -319,6 +321,7 @@ func updateConfig() {
 }
 
 func saveConfig() {
+	defer Setting.mu.Unlock()
 	Setting.mu.Lock()
 
 	jsonData, _ := json.Marshal(map[string]interface{}{
@@ -330,17 +333,14 @@ func saveConfig() {
 	})
 	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	if status == 503 {
-		Setting.mu.Unlock()
 		zlog.Error("Save config error,The remote server returned an error message , message: ", string(confF))
 		return
 	}
 	if err != nil {
 		zlog.Error("Save config error: ", err)
-		Setting.mu.Unlock()
 		return
 	}
 
-	Setting.mu.Unlock()
 	zlog.Success("Save config Completed")
 }
 
@@ -442,7 +442,7 @@ func copyIO(src, dest net.Conn, userid string) {
 		r, _ = io.Copy(dest, src)
 	}
 
-    Setting.Update.Lock()
+	Setting.Update.Lock()
 	Setting.mu.Lock()
 
 	NowUser := Setting.Config.Users[userid]
@@ -451,7 +451,7 @@ func copyIO(src, dest net.Conn, userid string) {
 
 	Setting.mu.Unlock()
 	Setting.Update.Unlock()
-	
+
 	if NowUser.Quota <= NowUser.Used {
 		go updateConfig()
 	}
