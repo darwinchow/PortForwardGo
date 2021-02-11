@@ -460,27 +460,21 @@ func copyIO(src, dest net.Conn, userid string) {
 func limitWrite(dest net.Conn, userid string, buf []byte) {
 	var r int
 
-	Setting.mu.RLock()
-	User := Setting.Config.Users[userid]
-	Setting.mu.RUnlock()
+	r, _ = dest.Write(buf)
 
-	if User.Speed != 0 {
-		bucket := ratelimit.New(User.Speed * 128 * 1024)
-		r, _ = ratelimit.Writer(dest, bucket).Write(buf)
-	} else {
-		r, _ = dest.Write(buf)
-	}
-	Setting.Update.Lock()
-	Setting.mu.Lock()
+	go func() {
+		Setting.Update.Lock()
+		Setting.mu.Lock()
 
-	NowUser := Setting.Config.Users[userid]
-	NowUser.Used += int64(r)
-	Setting.Config.Users[userid] = NowUser
+		NowUser := Setting.Config.Users[userid]
+		NowUser.Used += int64(r)
+		Setting.Config.Users[userid] = NowUser
 
-	Setting.mu.Unlock()
-	Setting.Update.Unlock()
+		Setting.mu.Unlock()
+		Setting.Update.Unlock()
 
-	if NowUser.Quota <= NowUser.Used {
-		go updateConfig()
-	}
+		if NowUser.Quota <= NowUser.Used {
+			go updateConfig()
+		}
+	}()
 }
