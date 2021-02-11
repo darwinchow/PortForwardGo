@@ -78,20 +78,22 @@ func WS_Handle(i string, ws *websocket.Conn) {
 		return
 	}
 
-	conn, err := net.Dial("tcp", r.Forward)
+	proxy, err := net.Dial("tcp", r.Forward)
 	if err != nil {
 		ws.Close()
 		return
 	}
 
 	if r.ProxyProtocolVersion != 0 {
-		header := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), &Addr{
+		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), &Addr{
 			NetworkType:   ws.Request().Header.Get("X-Forward-Protocol"),
 			NetworkString: ws.Request().Header.Get("X-Forward-Address"),
-		}, conn.LocalAddr())
-		header.WriteTo(conn)
+		}, proxy.LocalAddr()).Format()
+		if err == nil {
+			limitWrite(proxy, r.UserID, header)
+		}
 	}
 
-	go copyIO(ws, conn, r.UserID)
-	copyIO(conn, ws, r.UserID)
+	go copyIO(ws, proxy, r.UserID)
+	copyIO(proxy, ws, r.UserID)
 }

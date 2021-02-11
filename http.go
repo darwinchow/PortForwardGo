@@ -92,31 +92,33 @@ func http_handle(conn net.Conn) {
 	Setting.mu.RUnlock()
 
 	if r.Status != "Active" && r.Status != "Created" {
-		conn.Write([]byte(HttpStatus(503)))
-		conn.Write([]byte("\n"))
-		conn.Write([]byte(Page503))
+		limitWrite(conn, r.UserID,[]byte(HttpStatus(503)))
+		limitWrite(conn, r.UserID,[]byte("\n"))
+		limitWrite(conn, r.UserID,[]byte(Page503))
 		conn.Close()
 		return
 	}
 
 	proxy, error := net.Dial("tcp", r.Forward)
 	if error != nil {
-		conn.Write([]byte(HttpStatus(522)))
-		conn.Write([]byte("\n"))
-		conn.Write([]byte(Page522))
+		limitWrite(conn, r.UserID, []byte(HttpStatus(522)))
+		limitWrite(conn, r.UserID, []byte("\n"))
+		limitWrite(conn, r.UserID, []byte(Page522))
 		conn.Close()
 		return
 	}
 
 	if r.ProxyProtocolVersion != 0 {
-		header := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr())
-		header.WriteTo(proxy)
+		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr()).Format()
+		if err == nil {
+			limitWrite(proxy, r.UserID, header)
+		}
 	}
 
 	for element := readLines.Front(); element != nil; element = element.Next() {
 		line := element.Value.(string)
-		proxy.Write([]byte(line))
-		proxy.Write([]byte("\n"))
+		limitWrite(proxy, r.UserID, []byte(line))
+		limitWrite(proxy, r.UserID, []byte("\n"))
 	}
 
 	go copyIO(conn, proxy, r.UserID)

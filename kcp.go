@@ -68,8 +68,10 @@ func kcp_handleRequest(conn net.Conn, index string, r Rule) {
 	}
 
 	if r.ProxyProtocolVersion != 0 {
-		header := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr())
-		header.WriteTo(proxy)
+		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr()).Format()
+		if err == nil {
+			limitWrite(proxy, r.UserID, header)
+		}
 	}
 
 	go copyIO(conn, proxy, r.UserID)

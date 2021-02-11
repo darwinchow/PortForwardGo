@@ -166,14 +166,16 @@ func https_handle(conn net.Conn) {
 	}
 
 	if r.ProxyProtocolVersion != 0 {
-		header := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr())
-		header.WriteTo(proxy)
+		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr()).Format()
+		if err == nil {
+			limitWrite(proxy, r.UserID, header)
+		}
 	}
 
-	proxy.Write(firstByte)
-	proxy.Write(versionBytes)
-	proxy.Write(restLengthBytes)
-	proxy.Write(rest)
+	limitWrite(proxy, r.UserID, firstByte)
+	limitWrite(proxy, r.UserID, versionBytes)
+	limitWrite(proxy, r.UserID, restLengthBytes)
+	limitWrite(proxy, r.UserID, rest)
 
 	go copyIO(conn, proxy, r.UserID)
 	go copyIO(proxy, conn, r.UserID)
