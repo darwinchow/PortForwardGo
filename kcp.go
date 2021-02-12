@@ -10,18 +10,18 @@ import (
 )
 
 func LoadKCPRules(i string) {
-	Setting.mu.Lock()
+	Setting.Rules.RLock()
 	ln, err := kcp.ListenWithOptions(":"+Setting.Config.Rules[i].Listen, nil, 10, 3)
 	if err == nil {
 		zlog.Info("Loaded [", i, "] (KCP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	} else {
 		zlog.Error("Load failed [", i, "] (KCP) Error: ", err)
-		Setting.mu.Unlock()
+		Setting.Rules.RUnlock()
 		SendListenError(i)
 		return
 	}
 	Setting.Listener.KCP[i] = ln
-	Setting.mu.Unlock()
+	Setting.Rules.RUnlock()
 	for {
 		conn, err := ln.Accept()
 
@@ -32,9 +32,9 @@ func LoadKCPRules(i string) {
 			break
 		}
 
-		Setting.mu.RLock()
+		Setting.Rules.RLock()
 		r := Setting.Config.Rules[i]
-		Setting.mu.RUnlock()
+		Setting.Rules.RUnlock()
 
 		if r.Status != "Active" && r.Status != "Created" {
 			conn.Close()
@@ -54,10 +54,10 @@ func DeleteKCPRules(i string) {
 		}
 		delete(Setting.Listener.KCP, i)
 	}
-	Setting.mu.Lock()
+	Setting.Rules.Lock()
 	zlog.Info("Deleted [", i, "] (KCP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	delete(Setting.Config.Rules, i)
-	Setting.mu.Unlock()
+	Setting.Rules.Unlock()
 }
 
 func kcp_handleRequest(conn net.Conn, index string, r Rule) {

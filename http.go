@@ -30,18 +30,18 @@ func HttpInit() {
 }
 
 func LoadHttpRules(i string) {
-	Setting.mu.RLock()
+	Setting.Rules.RLock()
 	zlog.Info("Loaded [", i, "] (HTTPS)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	http_index[strings.ToLower(Setting.Config.Rules[i].Listen)] = i
-	Setting.mu.RUnlock()
+	Setting.Rules.RUnlock()
 }
 
 func DeleteHttpRules(i string) {
-	Setting.mu.Lock()
+	Setting.Rules.Lock()
 	zlog.Info("Deleted [", i, "] (HTTP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	delete(http_index, strings.ToLower(Setting.Config.Rules[i].Listen))
 	delete(Setting.Config.Rules, i)
-	Setting.mu.Unlock()
+	Setting.Rules.Unlock()
 }
 
 func http_handle(conn net.Conn) {
@@ -87,9 +87,9 @@ func http_handle(conn net.Conn) {
 		return
 	}
 
-	Setting.mu.RLock()
+	Setting.Rules.RLock()
 	r := Setting.Config.Rules[i]
-	Setting.mu.RUnlock()
+	Setting.Rules.RUnlock()
 
 	if r.Status != "Active" && r.Status != "Created" {
 		limitWrite(conn, r.UserID,[]byte(HttpStatus(503)))

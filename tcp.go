@@ -9,19 +9,19 @@ import (
 )
 
 func LoadTCPRules(i string) {
-	Setting.mu.Lock()
+	Setting.Rules.RLock()
 	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+Setting.Config.Rules[i].Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
 		zlog.Info("Loaded [", i, "] (TCP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	} else {
+		Setting.Rules.RUnlock()
 		zlog.Error("Load failed [", i, "] (TCP) Error: ", err)
 		SendListenError(i)
-		Setting.mu.Unlock()
 		return
 	}
 	Setting.Listener.TCP[i] = ln
-	Setting.mu.Unlock()
+	Setting.Rules.RUnlock()
 	for {
 		conn, err := ln.Accept()
 
@@ -33,9 +33,9 @@ func LoadTCPRules(i string) {
 		}
 
 		go func() {
-			Setting.mu.RLock()
+			Setting.Rules.RLock()
 			rule := Setting.Config.Rules[i]
-			Setting.mu.RUnlock()
+			Setting.Rules.RUnlock()
 
 			if rule.Status != "Active" && rule.Status != "Created" {
 				conn.Close()
@@ -56,10 +56,10 @@ func DeleteTCPRules(i string) {
 		}
 		delete(Setting.Listener.TCP, i)
 	}
-	Setting.mu.Lock()
+	Setting.Rules.Lock()
 	zlog.Info("Deleted [", i, "] (TCP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	delete(Setting.Config.Rules, i)
-	Setting.mu.Unlock()
+	Setting.Rules.Unlock()
 }
 
 func tcp_handleRequest(conn net.Conn, index string, r Rule) {

@@ -9,7 +9,7 @@ import (
 )
 
 func LoadWSCRules(i string) {
-	Setting.mu.Lock()
+	Setting.Rules.RLock()
 	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+Setting.Config.Rules[i].Listen)
 
 	ln, err := net.ListenTCP("tcp", tcpaddress)
@@ -17,13 +17,13 @@ func LoadWSCRules(i string) {
 		zlog.Info("Loaded [", i, "] (WebSocket Client) ", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	} else {
 		zlog.Error("Load failed [", i, "] (WebSocket Client) Error:", err)
-		Setting.mu.Unlock()
+		Setting.Rules.RUnlock()
 		SendListenError(i)
 		return
 	}
 
 	Setting.Listener.WSC[i] = ln
-	Setting.mu.Unlock()
+	Setting.Rules.RUnlock()
 
 	for {
 		conn, err := ln.Accept()
@@ -35,9 +35,9 @@ func LoadWSCRules(i string) {
 			break
 		}
 
-		Setting.mu.RLock()
+		Setting.Rules.RLock()
 		rule := Setting.Config.Rules[i]
-		Setting.mu.RUnlock()
+		Setting.Rules.RUnlock()
 
 		if rule.Status != "Active" && rule.Status != "Created" {
 			conn.Close()
@@ -57,10 +57,10 @@ func DeleteWSCRules(i string) {
 		}
 		delete(Setting.Listener.WSC, i)
 	}
-	Setting.mu.Lock()
+	Setting.Rules.Lock()
 	zlog.Info("Deleted [", i, "] (WebSocket Client)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	delete(Setting.Config.Rules, i)
-	Setting.mu.Unlock()
+	Setting.Rules.Unlock()
 }
 
 func wsc_handleRequest(conn net.Conn, index string, r Rule) {

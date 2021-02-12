@@ -29,10 +29,11 @@ var ConfigFile string
 var LogFile string
 
 type CSafeRule struct {
-	Listener Listener
-	Config   Config
-	mu       sync.RWMutex
-	Update   sync.Mutex
+	Listener  Listener
+	Config    Config
+	Rules     sync.RWMutex
+	Users     sync.Mutex
+	UsersRead sync.RWMutex
 }
 
 type Listener struct {
@@ -157,7 +158,7 @@ func main() {
 	}()
 	<-done
 	saveConfig()
-	zlog.PrintText("Exiting\n")
+	zlog.PrintText("Exiting")
 }
 
 func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
@@ -179,8 +180,6 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, "Success")
 
 	go func() {
-		Setting.Update.Lock()
-		Setting.mu.Lock()
 		if Setting.Config.Rules == nil {
 			Setting.Config.Rules = make(map[string]Rule)
 		}
@@ -189,10 +188,17 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 			Setting.Config.Users = make(map[string]User)
 		}
 
-		for index, _ := range NewConfig.Users {
-			Setting.Config.Users[index] = NewConfig.Users[index]
-		}
+		Setting.Users.Lock()
+		Setting.UsersRead.Lock()
+		for index, v := range NewConfig.Users {
+			if _, ok := Setting.Config.Users[index]; !ok {
+				Setting.Config.Users[index] = v
+			}
+		}		
+		Setting.UsersRead.Unlock()
+		Setting.Users.Unlock()
 
+		Setting.Rules.Lock()
 		for index, _ := range NewConfig.Rules {
 			if NewConfig.Rules[index].Status == "Deleted" {
 				go DeleteRules(index)
@@ -206,8 +212,7 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		Setting.mu.Unlock()
-		Setting.Update.Unlock()
+		Setting.Rules.Unlock()
 	}()
 	return
 }
@@ -272,14 +277,13 @@ func LoadNewRules(i string) {
 }
 
 func updateConfig() {
-	defer Setting.Update.Unlock()
 	var NewConfig Config
 
-	Setting.Update.Lock()
+	Setting.Users.Lock()
 
-	Setting.mu.RLock()
+	Setting.Rules.RLock()
 	NowConfig := Setting.Config
-	Setting.mu.RUnlock()
+	Setting.Rules.RUnlock()
 
 	jsonData, _ := json.Marshal(map[string]interface{}{
 		"Action":  "UpdateInfo",
@@ -291,22 +295,30 @@ func updateConfig() {
 
 	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	if status == 503 {
+		Setting.Users.Unlock()
 		zlog.Error("Scheduled task update error,The remote server returned an error message: ", string(confF))
 		return
 	}
 	if err != nil {
+		Setting.Users.Unlock()
 		zlog.Error("Scheduled task update: ", err)
 		return
 	}
 
 	err = json.Unmarshal(confF, &NewConfig)
 	if err != nil {
+		Setting.Users.Unlock()
 		zlog.Error("Cannot read the port forward config file. (Parse Error) " + err.Error())
 		return
 	}
 
-	Setting.mu.Lock()
+	Setting.Rules.Lock()
+	Setting.UsersRead.Lock()
 	Setting.Config = NewConfig
+	Setting.Rules.Unlock()
+	Setting.UsersRead.Unlock()
+	Setting.Users.Unlock()
+	
 	for index, rule := range Setting.Config.Rules {
 		if rule.Status == "Deleted" {
 			go DeleteRules(index)
@@ -316,13 +328,16 @@ func updateConfig() {
 			continue
 		}
 	}
-	Setting.mu.Unlock()
 	zlog.Success("Scheduled task update Completed")
 }
 
 func saveConfig() {
-	defer Setting.mu.Unlock()
-	Setting.mu.Lock()
+	defer Setting.UsersRead.Unlock()
+	defer Setting.Rules.Unlock()
+	defer Setting.Users.Unlock()
+	Setting.Rules.Lock()
+	Setting.UsersRead.Lock()
+	Setting.Users.Lock()
 
 	jsonData, _ := json.Marshal(map[string]interface{}{
 		"Action":  "SaveConfig",
@@ -357,7 +372,6 @@ func SendListenError(i string) {
 
 func getConfig() {
 	var NewConfig Config
-	Setting.mu.Lock()
 	jsonData, _ := json.Marshal(map[string]interface{}{
 		"Action":  "GetConfig",
 		"NodeID":  apic.NodeID,
@@ -366,26 +380,22 @@ func getConfig() {
 	})
 	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	if status == 503 {
-		Setting.mu.Unlock()
 		zlog.Error("The remote server returned an error message: ", string(confF))
 		return
 	}
 
 	if err != nil {
-		Setting.mu.Unlock()
 		zlog.Fatal("Cannot read the online config file. (NetWork Error) " + err.Error())
 		return
 	}
 
 	err = json.Unmarshal(confF, &NewConfig)
 	if err != nil {
-		Setting.mu.Unlock()
 		zlog.Fatal("Cannot read the port forward config file. (Parse Error) " + err.Error())
 		return
 	}
 	Setting.Config = NewConfig
 	zlog.Info("Update Cycle: ", Setting.Config.UpdateInfoCycle, " seconds")
-	Setting.mu.Unlock()
 	LoadListen()
 
 	for index, _ := range NewConfig.Rules {
@@ -431,9 +441,9 @@ func copyIO(src, dest net.Conn, userid string) {
 
 	var r int64
 
-	Setting.mu.RLock()
+	Setting.UsersRead.RLock()
 	User := Setting.Config.Users[userid]
-	Setting.mu.RUnlock()
+	Setting.UsersRead.RUnlock()
 
 	if User.Speed != 0 {
 		bucket := ratelimit.New(User.Speed * 128 * 1024)
@@ -442,15 +452,13 @@ func copyIO(src, dest net.Conn, userid string) {
 		r, _ = io.Copy(dest, src)
 	}
 
-	Setting.Update.Lock()
-	Setting.mu.Lock()
+	Setting.Users.Lock()
 
 	NowUser := Setting.Config.Users[userid]
 	NowUser.Used += r
 	Setting.Config.Users[userid] = NowUser
 
-	Setting.mu.Unlock()
-	Setting.Update.Unlock()
+	Setting.Users.Unlock()
 
 	if NowUser.Quota <= NowUser.Used {
 		go updateConfig()
@@ -463,15 +471,13 @@ func limitWrite(dest net.Conn, userid string, buf []byte) {
 	r, _ = dest.Write(buf)
 
 	go func() {
-		Setting.Update.Lock()
-		Setting.mu.Lock()
+		Setting.Users.Lock()
 
 		NowUser := Setting.Config.Users[userid]
 		NowUser.Used += int64(r)
 		Setting.Config.Users[userid] = NowUser
 
-		Setting.mu.Unlock()
-		Setting.Update.Unlock()
+		Setting.Users.Unlock()
 
 		if NowUser.Quota <= NowUser.Used {
 			go updateConfig()

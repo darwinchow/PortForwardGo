@@ -75,21 +75,21 @@ func (this *UDPDistribute) SetWriteDeadline(t time.Time) error {
 
 func LoadUDPRules(i string) {
 
-	Setting.mu.Lock()
+	Setting.Rules.RLock()
 	address, _ := net.ResolveUDPAddr("udp", ":"+Setting.Config.Rules[i].Listen)
 	ln, err := net.ListenUDP("udp", address)
 
 	if err == nil {
 		zlog.Info("Loaded [", i, "] (UDP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	} else {
+		Setting.Rules.RUnlock()
 		zlog.Error("Load failed [", i, "] (UDP) Error: ", err)
 		SendListenError(i)
-		Setting.mu.Unlock()
 		return
 	}
 
 	Setting.Listener.UDP[i] = ln
-	Setting.mu.Unlock()
+	Setting.Rules.RUnlock()
 
 	go AcceptUDP(ln, i)
 }
@@ -103,9 +103,9 @@ func DeleteUDPRules(i string) {
 		}
 		delete(Setting.Listener.UDP, i)
 	}
-	Setting.mu.Lock()
+	Setting.Rules.Lock()
 	delete(Setting.Config.Rules, i)
-	Setting.mu.Unlock()
+	Setting.Rules.Unlock()
 }
 
 func AcceptUDP(serv *net.UDPConn, index string) {
@@ -127,9 +127,9 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 		go func() {
 			buf = buf[:n]
 
-			Setting.mu.RLock()
+			Setting.Rules.RLock()
 			rule := Setting.Config.Rules[index]
-			Setting.mu.RUnlock()
+			Setting.Rules.RUnlock()
 
 			if rule.Status != "Active" && rule.Status != "Created" {
 				return

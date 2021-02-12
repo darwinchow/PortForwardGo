@@ -28,18 +28,18 @@ func HttpsInit() {
 }
 
 func LoadHttpsRules(i string) {
-	Setting.mu.RLock()
+	Setting.Rules.RLock()
 	zlog.Info("Loaded [", i, "] (HTTPS)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	https_index[strings.ToLower(Setting.Config.Rules[i].Listen)] = i
-	Setting.mu.RUnlock()
+	Setting.Rules.RUnlock()
 }
 
 func DeleteHttpsRules(i string) {
-	Setting.mu.Lock()
+	Setting.Rules.Lock()
 	zlog.Info("Deleted [", i, "] (HTTPS)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	delete(https_index, strings.ToLower(Setting.Config.Rules[i].Listen))
 	delete(Setting.Config.Rules, i)
-	Setting.mu.Unlock()
+	Setting.Rules.Unlock()
 }
 
 func https_handle(conn net.Conn) {
@@ -150,9 +150,9 @@ func https_handle(conn net.Conn) {
 		return
 	}
 
-	Setting.mu.RLock()
+	Setting.Rules.RLock()
 	r := Setting.Config.Rules[i]
-	Setting.mu.RUnlock()
+	Setting.Rules.RUnlock()
 
 	if r.Status != "Active" && r.Status != "Created" {
 		conn.Close()

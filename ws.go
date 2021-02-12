@@ -25,19 +25,19 @@ func (this *Addr) String() string {
 }
 
 func LoadWSRules(i string) {
-	Setting.mu.Lock()
+	Setting.Rules.RLock()
 	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+Setting.Config.Rules[i].Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
 		zlog.Info("Loaded [", i, "] (WebSocket)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	} else {
 		zlog.Error("Load failed [", i, "] (Websocket) Error: ", err)
-		Setting.mu.Unlock()
+		Setting.Rules.RUnlock()
 		SendListenError(i)
 		return
 	}
 	Setting.Listener.WS[i] = ln
-	Setting.mu.Unlock()
+	Setting.Rules.RUnlock()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
@@ -61,17 +61,17 @@ func DeleteWSRules(i string) {
 		}
 		delete(Setting.Listener.WS, i)
 	}
-	Setting.mu.Lock()
+	Setting.Rules.Lock()
 	zlog.Info("Deleted [", i, "] (WebSocket)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
 	delete(Setting.Config.Rules, i)
-	Setting.mu.Unlock()
+	Setting.Rules.Unlock()
 }
 
 func WS_Handle(i string, ws *websocket.Conn) {
 	ws.PayloadType = websocket.BinaryFrame
-	Setting.mu.RLock()
+	Setting.Rules.RLock()
 	r := Setting.Config.Rules[i]
-	Setting.mu.RUnlock()
+	Setting.Rules.RUnlock()
 
 	if r.Status != "Active" && r.Status != "Created" {
 		ws.Close()
