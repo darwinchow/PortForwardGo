@@ -37,13 +37,12 @@ func (this *UDPDistribute) Read(b []byte) (n int, err error) {
 
 	select {
 	case <-time.After(16 * time.Second):
-		return 0, errors.New("udp conn read timeout")
+		return 0, errors.New("i/o read timeout")
 	case data := <-this.Cache:
 		n := len(data)
 		copy(b, data)
 		return n, nil
 	}
-	return
 }
 
 func (this *UDPDistribute) Write(b []byte) (int, error) {
@@ -112,8 +111,6 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 
 	table := make(map[string]*UDPDistribute)
 	for {
-		serv.SetDeadline(time.Now().Add(16 * time.Second))
-
 		buf := make([]byte, 32*1024)
 
 		n, addr, err := serv.ReadFrom(buf)
@@ -125,8 +122,6 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 		}
 
 		go func() {
-			buf = buf[:n]
-
 			Setting.Rules.RLock()
 			rule := Setting.Config.Rules[index]
 			Setting.Rules.RUnlock()
@@ -134,6 +129,8 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 			if rule.Status != "Active" && rule.Status != "Created" {
 				return
 			}
+
+			buf = buf[:n]
 
 			if d, ok := table[addr.String()]; ok {
 				if d.Connected {
@@ -158,12 +155,6 @@ func ConnUDP(address string) (net.Conn, error) {
 		return nil, err
 	}
 
-	_, err = conn.Write([]byte("\x00"))
-	if err != nil {
-		return nil, err
-	}
-
-	conn.SetDeadline(time.Now().Add(16 * time.Second))
 	return conn, nil
 }
 
