@@ -122,10 +122,6 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 		}
 
 		go func() {
-			Setting.Rules.RLock()
-			rule := Setting.Config.Rules[index]
-			Setting.Rules.RUnlock()
-
 			buf = buf[:n]
 
 			if d, ok := table[addr.String()]; ok {
@@ -136,6 +132,10 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 					delete(table, addr.String())
 				}
 			}
+
+			Setting.Rules.RLock()
+			rule := Setting.Config.Rules[index]
+			Setting.Rules.RUnlock()
 
 			if rule.Status != "Active" && rule.Status != "Created" {
 				return
