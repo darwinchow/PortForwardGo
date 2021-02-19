@@ -126,10 +126,6 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 			rule := Setting.Config.Rules[index]
 			Setting.Rules.RUnlock()
 
-			if rule.Status != "Active" && rule.Status != "Created" {
-				return
-			}
-
 			buf = buf[:n]
 
 			if d, ok := table[addr.String()]; ok {
@@ -139,6 +135,10 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 				} else {
 					delete(table, addr.String())
 				}
+			}
+
+			if rule.Status != "Active" && rule.Status != "Created" {
+				return
 			}
 
 			conn := NewUDPDistribute(serv, addr)
