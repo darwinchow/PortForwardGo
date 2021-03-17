@@ -3,7 +3,6 @@ package main
 import (
 	"PortForwardGo/zlog"
 	"net"
-	"time"
 
 	proxyprotocol "github.com/pires/go-proxyproto"
 	kcp "github.com/xtaci/kcp-go"

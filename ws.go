@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"time"
 
 	proxyprotocol "github.com/pires/go-proxyproto"
 	"golang.org/x/net/websocket"
@@ -32,7 +31,7 @@ func LoadWSRules(i string) {
 	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
-		zlog.Info("Loaded [", i, "] (WebSocket)", r.Listen, " => ",ParseForward(r))
+		zlog.Info("Loaded [", i, "] (WebSocket)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", i, "] (Websocket) Error: ", err)
 		SendListenError(i)
@@ -58,7 +57,7 @@ func DeleteWSRules(i string) {
 		Setting.Listener.WS[i].Close()
 		delete(Setting.Listener.WS, i)
 	}
-	
+
 	Setting.Rules.Lock()
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
