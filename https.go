@@ -11,7 +11,6 @@ import (
 var https_index map[string]string
 
 func HttpsInit() {
-	https_index = make(map[string]string)
 	zlog.Info("[HTTPS] Listening ", Setting.Config.Listen["Https"].Port)
 	l, err := net.Listen("tcp", ":"+Setting.Config.Listen["Https"].Port)
 	if err != nil {
@@ -29,17 +28,20 @@ func HttpsInit() {
 
 func LoadHttpsRules(i string) {
 	Setting.Rules.RLock()
-	zlog.Info("Loaded [", i, "] (HTTPS)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
-	https_index[strings.ToLower(Setting.Config.Rules[i].Listen)] = i
+	r := Setting.Config.Rules[i]
 	Setting.Rules.RUnlock()
+
+	zlog.Info("Loaded [", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
+	https_index[strings.ToLower(r.Listen)] = i
 }
 
 func DeleteHttpsRules(i string) {
 	Setting.Rules.Lock()
-	zlog.Info("Deleted [", i, "] (HTTPS)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
-	delete(https_index, strings.ToLower(Setting.Config.Rules[i].Listen))
+	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+	zlog.Info("Deleted [", i, "] (HTTPS)",r.Listen, " => ", ParseForward(r))
+	delete(https_index, strings.ToLower(r.Listen))
 }
 
 func https_handle(conn net.Conn) {
@@ -159,7 +161,7 @@ func https_handle(conn net.Conn) {
 		return
 	}
 
-	proxy, error := net.Dial("tcp", r.Forward)
+	proxy, error := net.Dial("tcp", ParseForward(r))
 	if error != nil {
 		conn.Close()
 		return

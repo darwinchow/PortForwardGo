@@ -2,28 +2,25 @@ package main
 
 import (
 	"PortForwardGo/zlog"
-	"net"
-	"time"
-
 	"golang.org/x/net/websocket"
+	"net"
 )
 
 func LoadWSCRules(i string) {
 	Setting.Rules.RLock()
-	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+Setting.Config.Rules[i].Listen)
+	r := Setting.Config.Rules[i]
+	Setting.Rules.RUnlock()
 
+	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
-		zlog.Info("Loaded [", i, "] (WebSocket Client) ", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
+		zlog.Info("Loaded [", i, "] (WebSocket Client) ", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", i, "] (WebSocket Client) Error:", err)
-		Setting.Rules.RUnlock()
 		SendListenError(i)
 		return
 	}
-
 	Setting.Listener.WSC[i] = ln
-	Setting.Rules.RUnlock()
 
 	for {
 		conn, err := ln.Accept()
@@ -35,36 +32,34 @@ func LoadWSCRules(i string) {
 			break
 		}
 
-		Setting.Rules.RLock()
-		rule := Setting.Config.Rules[i]
-		Setting.Rules.RUnlock()
-
-		if rule.Status != "Active" && rule.Status != "Created" {
-			conn.Close()
-			continue
-		}
-
-		go wsc_handleRequest(conn, i, rule)
+		go wsc_handleRequest(conn, i)
 	}
 }
 
 func DeleteWSCRules(i string) {
 	if _, ok := Setting.Listener.WSC[i]; ok {
-		err := Setting.Listener.WSC[i].Close()
-		for err != nil {
-			time.Sleep(time.Second)
-			err = Setting.Listener.WSC[i].Close()
-		}
+		Setting.Listener.WSC[i].Close()
 		delete(Setting.Listener.WSC, i)
 	}
 	Setting.Rules.Lock()
-	zlog.Info("Deleted [", i, "] (WebSocket Client)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
+	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+	zlog.Info("Deleted [", i, "] (WebSocket Client)",  r.Listen, " => ", ParseForward(r))
+
 }
 
-func wsc_handleRequest(conn net.Conn, index string, r Rule) {
-	ws_config, err := websocket.NewConfig("ws://"+r.Forward+"/ws/", "http://"+r.Forward+"/ws/")
+func wsc_handleRequest(conn net.Conn, index string) {
+	Setting.Rules.RLock()
+	r := Setting.Config.Rules[index]
+	Setting.Rules.RUnlock()
+
+	if r.Status != "Active" && r.Status != "Created" {
+		conn.Close()
+		return
+	}
+
+	ws_config, err := websocket.NewConfig("ws://"+ParseForward(r)+"/ws/", "http://"+ParseForward(r)+"/ws/")
 	if err != nil {
 		_ = conn.Close()
 		return

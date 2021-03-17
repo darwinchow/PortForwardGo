@@ -13,7 +13,6 @@ import (
 var http_index map[string]string
 
 func HttpInit() {
-	http_index = make(map[string]string)
 	zlog.Info("[HTTP] Listening ", Setting.Config.Listen["Http"].Port)
 	l, err := net.Listen("tcp", ":"+Setting.Config.Listen["Http"].Port)
 	if err != nil {
@@ -31,17 +30,20 @@ func HttpInit() {
 
 func LoadHttpRules(i string) {
 	Setting.Rules.RLock()
-	zlog.Info("Loaded [", i, "] (HTTPS)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
-	http_index[strings.ToLower(Setting.Config.Rules[i].Listen)] = i
+	r := Setting.Config.Rules[i]
 	Setting.Rules.RUnlock()
+
+	zlog.Info("Loaded [", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
+	http_index[strings.ToLower(r.Listen)] = i
 }
 
 func DeleteHttpRules(i string) {
 	Setting.Rules.Lock()
-	zlog.Info("Deleted [", i, "] (HTTP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
-	delete(http_index, strings.ToLower(Setting.Config.Rules[i].Listen))
+	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+	delete(http_index, strings.ToLower(r.Listen))
+	zlog.Info("Deleted [", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
 func http_handle(conn net.Conn) {
@@ -99,7 +101,7 @@ func http_handle(conn net.Conn) {
 		return
 	}
 
-	proxy, error := net.Dial("tcp", r.Forward)
+	proxy, error := net.Dial("tcp", ParseForward(r))
 	if error != nil {
 		limitWrite(conn, r.UserID, []byte(HttpStatus(522)))
 		limitWrite(conn, r.UserID, []byte("\n"))

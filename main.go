@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -69,7 +71,8 @@ type Rule struct {
 	UserID               string
 	Protocol             string
 	Listen               string
-	Forward              string
+	RemoteHost           string
+	RemotePort           int
 	ProxyProtocolVersion int
 }
 
@@ -100,6 +103,9 @@ func main() {
 		Setting.Listener.KCP = make(map[string]*kcp.Listener)
 		Setting.Listener.WS = make(map[string]*net.TCPListener)
 		Setting.Listener.WSC = make(map[string]*net.TCPListener)
+
+		http_index = make(map[string]string)
+		https_index = make(map[string]string)
 	}
 
 	os.Remove(LogFile)
@@ -194,7 +200,7 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 			if _, ok := Setting.Config.Users[index]; !ok {
 				Setting.Config.Users[index] = v
 			}
-		}		
+		}
 		Setting.UsersRead.Unlock()
 		Setting.Users.Unlock()
 
@@ -318,7 +324,7 @@ func updateConfig() {
 	Setting.Rules.Unlock()
 	Setting.UsersRead.Unlock()
 	Setting.Users.Unlock()
-	
+
 	for index, rule := range Setting.Config.Rules {
 		if rule.Status == "Deleted" {
 			go DeleteRules(index)
@@ -483,4 +489,12 @@ func limitWrite(dest net.Conn, userid string, buf []byte) {
 			go updateConfig()
 		}
 	}()
+}
+
+func ParseForward(r Rule) string {
+	if strings.Count(r.RemoteHost, ":") == 1 {
+		return "[" + r.RemoteHost + "]:" + strconv.Itoa(r.RemotePort)
+	}
+
+	return r.RemoteHost + ":" + strconv.Itoa(r.RemotePort)
 }

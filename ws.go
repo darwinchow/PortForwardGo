@@ -26,18 +26,19 @@ func (this *Addr) String() string {
 
 func LoadWSRules(i string) {
 	Setting.Rules.RLock()
-	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+Setting.Config.Rules[i].Listen)
+	r := Setting.Config.Rules[i]
+	Setting.Rules.RUnlock()
+
+	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
-		zlog.Info("Loaded [", i, "] (WebSocket)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
+		zlog.Info("Loaded [", i, "] (WebSocket)", r.Listen, " => ",ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", i, "] (Websocket) Error: ", err)
-		Setting.Rules.RUnlock()
 		SendListenError(i)
 		return
 	}
 	Setting.Listener.WS[i] = ln
-	Setting.Rules.RUnlock()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
@@ -54,17 +55,15 @@ func LoadWSRules(i string) {
 
 func DeleteWSRules(i string) {
 	if _, ok := Setting.Listener.WS[i]; ok {
-		err := Setting.Listener.WS[i].Close()
-		for err != nil {
-			time.Sleep(time.Second)
-			err = Setting.Listener.WS[i].Close()
-		}
+		Setting.Listener.WS[i].Close()
 		delete(Setting.Listener.WS, i)
 	}
+	
 	Setting.Rules.Lock()
-	zlog.Info("Deleted [", i, "] (WebSocket)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
+	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+	zlog.Info("Deleted [", i, "] (WebSocket)", r.Listen, " => ", ParseForward(r))
 }
 
 func WS_Handle(i string, ws *websocket.Conn) {
@@ -78,7 +77,7 @@ func WS_Handle(i string, ws *websocket.Conn) {
 		return
 	}
 
-	proxy, err := net.Dial("tcp", r.Forward)
+	proxy, err := net.Dial("tcp", ParseForward(r))
 	if err != nil {
 		ws.Close()
 		return

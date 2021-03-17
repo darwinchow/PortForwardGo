@@ -3,25 +3,25 @@ package main
 import (
 	"PortForwardGo/zlog"
 	"net"
-	"time"
 
 	proxyprotocol "github.com/pires/go-proxyproto"
 )
 
 func LoadTCPRules(i string) {
 	Setting.Rules.RLock()
-	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+Setting.Config.Rules[i].Listen)
+	r := Setting.Config.Rules[i]
+	Setting.Rules.RUnlock()
+
+	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
-		zlog.Info("Loaded [", i, "] (TCP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
+		zlog.Info("Loaded [", i, "] (TCP)", r.Listen, " => ", ParseForward(r))
 	} else {
-		Setting.Rules.RUnlock()
 		zlog.Error("Load failed [", i, "] (TCP) Error: ", err)
 		SendListenError(i)
 		return
 	}
 	Setting.Listener.TCP[i] = ln
-	Setting.Rules.RUnlock()
 	for {
 		conn, err := ln.Accept()
 
@@ -32,38 +32,33 @@ func LoadTCPRules(i string) {
 			break
 		}
 
-		go func() {
-			Setting.Rules.RLock()
-			rule := Setting.Config.Rules[i]
-			Setting.Rules.RUnlock()
-
-			if rule.Status != "Active" && rule.Status != "Created" {
-				conn.Close()
-				return
-			}
-
-			go tcp_handleRequest(conn, i, rule)
-		}()
+		go tcp_handleRequest(conn, i)
 	}
 }
 
 func DeleteTCPRules(i string) {
 	if _, ok := Setting.Listener.TCP[i]; ok {
-		err := Setting.Listener.TCP[i].Close()
-		for err != nil {
-			time.Sleep(time.Second)
-			err = Setting.Listener.TCP[i].Close()
-		}
+		Setting.Listener.TCP[i].Close()
 		delete(Setting.Listener.TCP, i)
 	}
 	Setting.Rules.Lock()
-	zlog.Info("Deleted [", i, "] (TCP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
+	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+	zlog.Info("Deleted [", i, "] (TCP)", r.Listen, " => ",ParseForward(r))
 }
 
-func tcp_handleRequest(conn net.Conn, index string, r Rule) {
-	proxy, err := net.Dial("tcp", r.Forward)
+func tcp_handleRequest(conn net.Conn, index string) {
+	Setting.Rules.RLock()
+	r := Setting.Config.Rules[index]
+	Setting.Rules.RUnlock()
+
+	if r.Status != "Active" && r.Status != "Created" {
+		conn.Close()
+		return
+	}
+
+	proxy, err := net.Dial("tcp", ParseForward(r))
 	if err != nil {
 		conn.Close()
 		return

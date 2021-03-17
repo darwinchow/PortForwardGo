@@ -73,38 +73,35 @@ func (this *UDPDistribute) SetWriteDeadline(t time.Time) error {
 }
 
 func LoadUDPRules(i string) {
-
 	Setting.Rules.RLock()
-	address, _ := net.ResolveUDPAddr("udp", ":"+Setting.Config.Rules[i].Listen)
+	r := Setting.Config.Rules[i]
+	Setting.Rules.RUnlock()
+
+	address, _ := net.ResolveUDPAddr("udp", ":"+r.Listen)
 	ln, err := net.ListenUDP("udp", address)
 
 	if err == nil {
-		zlog.Info("Loaded [", i, "] (UDP)", Setting.Config.Rules[i].Listen, " => ", Setting.Config.Rules[i].Forward)
+		zlog.Info("Loaded [", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 	} else {
-		Setting.Rules.RUnlock()
 		zlog.Error("Load failed [", i, "] (UDP) Error: ", err)
 		SendListenError(i)
 		return
 	}
-
 	Setting.Listener.UDP[i] = ln
-	Setting.Rules.RUnlock()
 
-	go AcceptUDP(ln, i)
+	AcceptUDP(ln, i)
 }
 
 func DeleteUDPRules(i string) {
 	if _, ok := Setting.Listener.UDP[i]; ok {
-		err := Setting.Listener.UDP[i].Close()
-		for err != nil {
-			time.Sleep(time.Second)
-			err = Setting.Listener.UDP[i].Close()
-		}
+		Setting.Listener.UDP[i].Close()
 		delete(Setting.Listener.UDP, i)
 	}
 	Setting.Rules.Lock()
+	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+	zlog.Info("Deleted [", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 }
 
 func AcceptUDP(serv *net.UDPConn, index string) {
@@ -133,33 +130,26 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 				}
 			}
 
-			Setting.Rules.RLock()
-			rule := Setting.Config.Rules[index]
-			Setting.Rules.RUnlock()
-
-			if rule.Status != "Active" && rule.Status != "Created" {
-				return
-			}
-
 			conn := NewUDPDistribute(serv, addr)
 			table[addr.String()] = conn
 			conn.Cache <- buf
-			go udp_handleRequest(conn, index, rule)
+
+			udp_handleRequest(conn, index)
 		}()
 	}
 }
 
-func ConnUDP(address string) (net.Conn, error) {
-	conn, err := net.DialTimeout("udp", address, 10*time.Second)
-	if err != nil {
-		return nil, err
+func udp_handleRequest(conn net.Conn, index string) {
+	Setting.Rules.RLock()
+	r := Setting.Config.Rules[index]
+	Setting.Rules.RUnlock()
+
+	if r.Status != "Active" && r.Status != "Created" {
+		conn.Close()
+		return
 	}
 
-	return conn, nil
-}
-
-func udp_handleRequest(conn net.Conn, index string, r Rule) {
-	proxy, err := ConnUDP(r.Forward)
+	proxy, err := net.DialTimeout("udp", ParseForward(r), 10*time.Second)
 	if err != nil {
 		conn.Close()
 		return
