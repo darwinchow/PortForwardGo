@@ -93,6 +93,6 @@ func WS_Handle(i string, ws *websocket.Conn) {
 		}
 	}
 
-	go copyIO(ws, proxy, r.UserID)
-	copyIO(proxy, ws, r.UserID)
+	go copyIO(ws, proxy, r)
+	copyIO(proxy, ws, r)
 }

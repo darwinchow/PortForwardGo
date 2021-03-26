@@ -123,8 +123,8 @@ func http_handle(conn net.Conn) {
 		limitWrite(proxy, r.UserID, []byte("\n"))
 	}
 
-	go copyIO(conn, proxy, r.UserID)
-	go copyIO(proxy, conn, r.UserID)
+	go copyIO(conn, proxy, r)
+	go copyIO(proxy, conn, r)
 }
 
 func ParseAddrToIP(addr string) string {

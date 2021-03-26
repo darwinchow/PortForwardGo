@@ -179,6 +179,6 @@ func https_handle(conn net.Conn) {
 	limitWrite(proxy, r.UserID, restLengthBytes)
 	limitWrite(proxy, r.UserID, rest)
 
-	go copyIO(conn, proxy, r.UserID)
-	go copyIO(proxy, conn, r.UserID)
+	go copyIO(conn, proxy, r)
+	go copyIO(proxy, conn, r)
 }

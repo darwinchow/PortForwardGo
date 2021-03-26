@@ -35,7 +35,6 @@ type CSafeRule struct {
 	Config    Config
 	Rules     sync.RWMutex
 	Users     sync.Mutex
-	UsersRead sync.RWMutex
 }
 
 type Listener struct {
@@ -61,7 +60,6 @@ type Listen struct {
 }
 
 type User struct {
-	Speed int64
 	Quota int64
 	Used  int64
 }
@@ -70,6 +68,7 @@ type Rule struct {
 	Status               string
 	UserID               string
 	Protocol             string
+	Speed                int64
 	Listen               string
 	RemoteHost           string
 	RemotePort           int
@@ -195,13 +194,11 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 		}
 
 		Setting.Users.Lock()
-		Setting.UsersRead.Lock()
 		for index, v := range NewConfig.Users {
 			if _, ok := Setting.Config.Users[index]; !ok {
 				Setting.Config.Users[index] = v
 			}
 		}
-		Setting.UsersRead.Unlock()
 		Setting.Users.Unlock()
 
 		Setting.Rules.Lock()
@@ -319,10 +316,8 @@ func updateConfig() {
 	}
 
 	Setting.Rules.Lock()
-	Setting.UsersRead.Lock()
 	Setting.Config = NewConfig
 	Setting.Rules.Unlock()
-	Setting.UsersRead.Unlock()
 	Setting.Users.Unlock()
 
 	for index, rule := range Setting.Config.Rules {
@@ -338,11 +333,9 @@ func updateConfig() {
 }
 
 func saveConfig() {
-	defer Setting.UsersRead.Unlock()
 	defer Setting.Rules.Unlock()
 	defer Setting.Users.Unlock()
 	Setting.Rules.Lock()
-	Setting.UsersRead.Lock()
 	Setting.Users.Lock()
 
 	jsonData, _ := json.Marshal(map[string]interface{}{
@@ -441,28 +434,24 @@ func md5_encode(s string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func copyIO(src, dest net.Conn, userid string) {
+func copyIO(src, dest net.Conn, r Rule) {
 	defer src.Close()
 	defer dest.Close()
 
-	var r int64
+	var b int64
 
-	Setting.UsersRead.RLock()
-	User := Setting.Config.Users[userid]
-	Setting.UsersRead.RUnlock()
-
-	if User.Speed != 0 {
-		bucket := ratelimit.New(User.Speed * 128 * 1024)
-		r, _ = io.Copy(ratelimit.Writer(dest, bucket), src)
+	if r.Speed != 0 {
+		bucket := ratelimit.New(r.Speed * 128 * 1024)
+		b, _ = io.Copy(ratelimit.Writer(dest, bucket), src)
 	} else {
-		r, _ = io.Copy(dest, src)
+		b, _ = io.Copy(dest, src)
 	}
 
 	Setting.Users.Lock()
 
-	NowUser := Setting.Config.Users[userid]
-	NowUser.Used += r
-	Setting.Config.Users[userid] = NowUser
+	NowUser := Setting.Config.Users[r.UserID]
+	NowUser.Used += b
+	Setting.Config.Users[r.UserID] = NowUser
 
 	Setting.Users.Unlock()
 

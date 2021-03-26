@@ -72,6 +72,6 @@ func kcp_handleRequest(conn net.Conn, index string) {
 		}
 	}
 
-	go copyIO(conn, proxy, r.UserID)
-	go copyIO(proxy, conn, r.UserID)
+	go copyIO(conn, proxy, r)
+	go copyIO(proxy, conn, r)
 }
