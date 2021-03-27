@@ -31,10 +31,10 @@ var ConfigFile string
 var LogFile string
 
 type CSafeRule struct {
-	Listener  Listener
-	Config    Config
-	Rules     sync.RWMutex
-	Users     sync.Mutex
+	Listener Listener
+	Config   Config
+	Rules    sync.RWMutex
+	Users    sync.Mutex
 }
 
 type Listener struct {
@@ -171,6 +171,7 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		w.WriteHeader(403)
 		io.WriteString(w, "Unsupport Method.")
+		zlog.Error("[API] Unsupport Method. Client IP: " + r.RemoteAddr + " URI: " + r.RequestURI)
 		return
 	}
 	postdata, _ := ioutil.ReadAll(r.Body)
@@ -178,11 +179,13 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(400)
 		io.WriteString(w, fmt.Sprintln(err))
+		zlog.Error("[API] Json Parse Error(" + err.Error() + "). Client IP: " + r.RemoteAddr + " URI: " + r.RequestURI)
 		return
 	}
 
 	w.WriteHeader(200)
 	io.WriteString(w, "Success")
+	zlog.Success("[API] Client IP: " + r.RemoteAddr + " URI: " + r.RequestURI)
 
 	go func() {
 		if Setting.Config.Rules == nil {
@@ -304,14 +307,14 @@ func updateConfig() {
 	}
 	if err != nil {
 		Setting.Users.Unlock()
-		zlog.Error("Scheduled task update: ", err)
+		zlog.Error("Scheduled task update error: ", err)
 		return
 	}
 
 	err = json.Unmarshal(confF, &NewConfig)
 	if err != nil {
 		Setting.Users.Unlock()
-		zlog.Error("Cannot read the port forward config file. (Parse Error) " + err.Error())
+		zlog.Error("Scheduled task update parse error: " + err.Error())
 		return
 	}
 
