@@ -261,26 +261,36 @@ func DeleteRules(i string) {
 }
 
 func LoadNewRules(i string) {
-	if _, ok := Setting.Config.Rules[i]; ok {
-		return
-	}
 	Protocol := Setting.Config.Rules[i].Protocol
 
 	if Protocol == "tcp" {
+		if _, ok := Setting.Listener.TCP[i]; ok {
+			return
+		}
 		LoadTCPRules(i)
 	} else if Protocol == "udp" {
+		if _, ok := Setting.Listener.UDP[i]; ok {
+			return
+		}
 		LoadUDPRules(i)
 	} else if Protocol == "kcp" {
+		if _, ok := Setting.Listener.KCP[i]; ok {
+			return
+		}
 		LoadKCPRules(i)
 	} else if Protocol == "http" {
 		LoadHttpRules(i)
 	} else if Protocol == "https" {
 		LoadHttpsRules(i)
-	} else if Protocol == "https" {
-		LoadHttpsRules(i)
 	} else if Protocol == "ws" {
+		if _, ok := Setting.Listener.WS[i]; ok {
+			return
+		}
 		LoadWSRules(i)
 	} else if Protocol == "wsc" {
+		if _, ok := Setting.Listener.WSC[i]; ok {
+			return
+		}
 		LoadWSCRules(i)
 	}
 }
