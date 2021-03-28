@@ -86,7 +86,7 @@ var apic APIConfig
 func main() {
 	{
 		flag.StringVar(&ConfigFile, "config", "config.json", "The config file location.")
-		flag.StringVar(&LogFile, "log", "run.log", "The log file location.")
+		flag.StringVar(&LogFile, "log", "", "The log file location.")
 		help := flag.Bool("h", false, "Show help")
 		flag.Parse()
 
@@ -106,14 +106,14 @@ func main() {
 		http_index = make(map[string]string)
 		https_index = make(map[string]string)
 	}
-
-	os.Remove(LogFile)
-	logfile_writer, err := os.OpenFile(LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err == nil {
-		zlog.SetOutput(logfile_writer)
-		zlog.Info("Log file location: ", LogFile)
+	if LogFile != "" {
+		os.Remove(LogFile)
+		logfile_writer, err := os.OpenFile(LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err == nil {
+			zlog.SetOutput(logfile_writer)
+			zlog.Info("Log file location: ", LogFile)
+		}
 	}
-
 	zlog.Info("Node Version: ", version)
 
 	apif, err := ioutil.ReadFile(ConfigFile)
@@ -261,6 +261,9 @@ func DeleteRules(i string) {
 }
 
 func LoadNewRules(i string) {
+	if _, ok := Setting.Config.Rules[i]; ok {
+		return
+	}
 	Protocol := Setting.Config.Rules[i].Protocol
 
 	if Protocol == "tcp" {
