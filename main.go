@@ -38,11 +38,14 @@ type CSafeRule struct {
 }
 
 type Listener struct {
-	TCP map[string]*net.TCPListener
-	UDP map[string]*net.UDPConn
-	KCP map[string]*kcp.Listener
-	WS  map[string]*net.TCPListener
-	WSC map[string]*net.TCPListener
+	Turn  sync.RWMutex
+	TCP   map[string]*net.TCPListener
+	UDP   map[string]*net.UDPConn
+	KCP   map[string]*kcp.Listener
+	HTTP  map[string]string
+	HTTPS map[string]string
+	WS    map[string]*net.TCPListener
+	WSC   map[string]*net.TCPListener
 }
 
 type Config struct {
@@ -100,11 +103,10 @@ func main() {
 		Setting.Listener.TCP = make(map[string]*net.TCPListener)
 		Setting.Listener.UDP = make(map[string]*net.UDPConn)
 		Setting.Listener.KCP = make(map[string]*kcp.Listener)
+		Setting.Listener.HTTP = make(map[string]string)
+		Setting.Listener.HTTPS = make(map[string]string)
 		Setting.Listener.WS = make(map[string]*net.TCPListener)
 		Setting.Listener.WSC = make(map[string]*net.TCPListener)
-
-		http_index = make(map[string]string)
-		https_index = make(map[string]string)
 	}
 	if LogFile != "" {
 		os.Remove(LogFile)
@@ -264,33 +266,18 @@ func LoadNewRules(i string) {
 	Protocol := Setting.Config.Rules[i].Protocol
 
 	if Protocol == "tcp" {
-		if _, ok := Setting.Listener.TCP[i]; ok {
-			return
-		}
 		LoadTCPRules(i)
 	} else if Protocol == "udp" {
-		if _, ok := Setting.Listener.UDP[i]; ok {
-			return
-		}
 		LoadUDPRules(i)
 	} else if Protocol == "kcp" {
-		if _, ok := Setting.Listener.KCP[i]; ok {
-			return
-		}
 		LoadKCPRules(i)
 	} else if Protocol == "http" {
 		LoadHttpRules(i)
 	} else if Protocol == "https" {
 		LoadHttpsRules(i)
 	} else if Protocol == "ws" {
-		if _, ok := Setting.Listener.WS[i]; ok {
-			return
-		}
 		LoadWSRules(i)
 	} else if Protocol == "wsc" {
-		if _, ok := Setting.Listener.WSC[i]; ok {
-			return
-		}
 		LoadWSCRules(i)
 	}
 }

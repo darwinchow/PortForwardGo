@@ -10,8 +10,6 @@ import (
 	proxyprotocol "github.com/pires/go-proxyproto"
 )
 
-var http_index map[string]string
-
 func HttpInit() {
 	zlog.Info("[HTTP] Listening ", Setting.Config.Listen["Http"].Port)
 	l, err := net.Listen("tcp", ":"+Setting.Config.Listen["Http"].Port)
@@ -33,8 +31,17 @@ func LoadHttpRules(i string) {
 	r := Setting.Config.Rules[i]
 	Setting.Rules.RUnlock()
 
+	Setting.Listener.Turn.RLock()
+	if _, ok := Setting.Listener.HTTP[strings.ToLower(r.Listen)]; ok {
+		return
+	}
+	Setting.Listener.Turn.RUnlock()
+
 	zlog.Info("Loaded [", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
-	http_index[strings.ToLower(r.Listen)] = i
+
+	Setting.Listener.Turn.Lock()
+	Setting.Listener.HTTP[strings.ToLower(r.Listen)] = i
+	Setting.Listener.Turn.Unlock()
 }
 
 func DeleteHttpRules(i string) {
@@ -42,8 +49,12 @@ func DeleteHttpRules(i string) {
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
-	delete(http_index, strings.ToLower(r.Listen))
+
 	zlog.Info("Deleted [", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
+
+	Setting.Listener.Turn.Lock()
+	delete(Setting.Listener.HTTP, strings.ToLower(r.Listen))
+	Setting.Listener.Turn.Unlock()
 }
 
 func http_handle(conn net.Conn) {
@@ -80,7 +91,7 @@ func http_handle(conn net.Conn) {
 		return
 	}
 
-	i, ok := http_index[hostname]
+	i, ok := Setting.Listener.HTTP[hostname]
 	if !ok {
 		conn.Write([]byte(HttpStatus(503)))
 		conn.Write([]byte("\n"))
@@ -94,9 +105,9 @@ func http_handle(conn net.Conn) {
 	Setting.Rules.RUnlock()
 
 	if r.Status != "Active" && r.Status != "Created" {
-		limitWrite(conn, r.UserID,[]byte(HttpStatus(503)))
-		limitWrite(conn, r.UserID,[]byte("\n"))
-		limitWrite(conn, r.UserID,[]byte(Page503))
+		limitWrite(conn, r.UserID, []byte(HttpStatus(503)))
+		limitWrite(conn, r.UserID, []byte("\n"))
+		limitWrite(conn, r.UserID, []byte(Page503))
 		conn.Close()
 		return
 	}

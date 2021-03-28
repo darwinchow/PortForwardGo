@@ -73,6 +73,12 @@ func (this *UDPDistribute) SetWriteDeadline(t time.Time) error {
 }
 
 func LoadUDPRules(i string) {
+	Setting.Listener.Turn.RLock()
+	if _, ok := Setting.Listener.UDP[i]; ok {
+		return
+	}
+	Setting.Listener.Turn.RUnlock()
+
 	Setting.Rules.RLock()
 	r := Setting.Config.Rules[i]
 	Setting.Rules.RUnlock()
@@ -87,16 +93,21 @@ func LoadUDPRules(i string) {
 		SendListenError(i)
 		return
 	}
+	Setting.Listener.Turn.Lock()
 	Setting.Listener.UDP[i] = ln
+	Setting.Listener.Turn.Unlock()
 
 	AcceptUDP(ln, i)
 }
 
 func DeleteUDPRules(i string) {
+	Setting.Listener.Turn.Lock()
 	if _, ok := Setting.Listener.UDP[i]; ok {
 		Setting.Listener.UDP[i].Close()
 		delete(Setting.Listener.UDP, i)
 	}
+	Setting.Listener.Turn.Unlock()
+
 	Setting.Rules.Lock()
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)

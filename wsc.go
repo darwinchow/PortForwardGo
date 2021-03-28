@@ -2,11 +2,18 @@ package main
 
 import (
 	"PortForwardGo/zlog"
-	"golang.org/x/net/websocket"
 	"net"
+
+	"golang.org/x/net/websocket"
 )
 
 func LoadWSCRules(i string) {
+	Setting.Listener.Turn.RLock()
+	if _, ok := Setting.Listener.WSC[i]; ok {
+		return
+	}
+	Setting.Listener.Turn.RUnlock()
+
 	Setting.Rules.RLock()
 	r := Setting.Config.Rules[i]
 	Setting.Rules.RUnlock()
@@ -20,8 +27,9 @@ func LoadWSCRules(i string) {
 		SendListenError(i)
 		return
 	}
+	Setting.Listener.Turn.Lock()
 	Setting.Listener.WSC[i] = ln
-
+	Setting.Listener.Turn.Unlock()
 	for {
 		conn, err := ln.Accept()
 
@@ -37,15 +45,18 @@ func LoadWSCRules(i string) {
 }
 
 func DeleteWSCRules(i string) {
+	Setting.Listener.Turn.Lock()
 	if _, ok := Setting.Listener.WSC[i]; ok {
 		Setting.Listener.WSC[i].Close()
 		delete(Setting.Listener.WSC, i)
 	}
+	Setting.Listener.Turn.Unlock()
+
 	Setting.Rules.Lock()
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
-	zlog.Info("Deleted [", i, "] (WebSocket Client)",  r.Listen, " => ", ParseForward(r))
+	zlog.Info("Deleted [", i, "] (WebSocket Client)", r.Listen, " => ", ParseForward(r))
 
 }
 

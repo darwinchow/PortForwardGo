@@ -24,6 +24,12 @@ func (this *Addr) String() string {
 }
 
 func LoadWSRules(i string) {
+	Setting.Listener.Turn.RLock()
+	if _, ok := Setting.Listener.WS[i]; ok {
+		return
+	}
+	Setting.Listener.Turn.RUnlock()
+
 	Setting.Rules.RLock()
 	r := Setting.Config.Rules[i]
 	Setting.Rules.RUnlock()
@@ -37,7 +43,9 @@ func LoadWSRules(i string) {
 		SendListenError(i)
 		return
 	}
+	Setting.Listener.Turn.Lock()
 	Setting.Listener.WS[i] = ln
+	Setting.Listener.Turn.Unlock()
 
 	Router := http.NewServeMux()
 	Router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -54,10 +62,12 @@ func LoadWSRules(i string) {
 }
 
 func DeleteWSRules(i string) {
+	Setting.Listener.Turn.Lock()
 	if _, ok := Setting.Listener.WS[i]; ok {
 		Setting.Listener.WS[i].Close()
 		delete(Setting.Listener.WS, i)
 	}
+	Setting.Listener.Turn.Unlock()
 
 	Setting.Rules.Lock()
 	r := Setting.Config.Rules[i]

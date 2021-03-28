@@ -8,8 +8,6 @@ import (
 	proxyprotocol "github.com/pires/go-proxyproto"
 )
 
-var https_index map[string]string
-
 func HttpsInit() {
 	zlog.Info("[HTTPS] Listening ", Setting.Config.Listen["Https"].Port)
 	l, err := net.Listen("tcp", ":"+Setting.Config.Listen["Https"].Port)
@@ -31,8 +29,17 @@ func LoadHttpsRules(i string) {
 	r := Setting.Config.Rules[i]
 	Setting.Rules.RUnlock()
 
+	Setting.Listener.Turn.RLock()
+	if _, ok := Setting.Listener.HTTPS[strings.ToLower(r.Listen)]; ok {
+		return
+	}
+	Setting.Listener.Turn.RUnlock()
+
 	zlog.Info("Loaded [", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
-	https_index[strings.ToLower(r.Listen)] = i
+
+	Setting.Listener.Turn.Lock()
+	Setting.Listener.HTTPS[strings.ToLower(r.Listen)] = i
+	Setting.Listener.Turn.Lock()
 }
 
 func DeleteHttpsRules(i string) {
@@ -40,8 +47,12 @@ func DeleteHttpsRules(i string) {
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
-	zlog.Info("Deleted [", i, "] (HTTPS)",r.Listen, " => ", ParseForward(r))
-	delete(https_index, strings.ToLower(r.Listen))
+
+	zlog.Info("Deleted [", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
+
+	Setting.Listener.Turn.Lock()
+	delete(Setting.Listener.HTTPS, strings.ToLower(r.Listen))
+	Setting.Listener.Turn.Unlock()
 }
 
 func https_handle(conn net.Conn) {
@@ -146,7 +157,7 @@ func https_handle(conn net.Conn) {
 		return
 	}
 
-	i, ok := https_index[hostname]
+	i, ok := Setting.Listener.HTTPS[hostname]
 	if !ok {
 		conn.Close()
 		return

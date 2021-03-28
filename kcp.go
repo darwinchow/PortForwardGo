@@ -9,6 +9,12 @@ import (
 )
 
 func LoadKCPRules(i string) {
+	Setting.Listener.Turn.RLock()
+	if _, ok := Setting.Listener.KCP[i]; ok {
+		return
+	}
+	Setting.Listener.Turn.RUnlock()
+
 	Setting.Rules.RLock()
 	r := Setting.Config.Rules[i]
 	Setting.Rules.RUnlock()
@@ -21,7 +27,9 @@ func LoadKCPRules(i string) {
 		SendListenError(i)
 		return
 	}
+	Setting.Listener.Turn.Lock()
 	Setting.Listener.KCP[i] = ln
+	Setting.Listener.Turn.Unlock()
 	for {
 		conn, err := ln.Accept()
 
@@ -37,10 +45,13 @@ func LoadKCPRules(i string) {
 }
 
 func DeleteKCPRules(i string) {
+	Setting.Listener.Turn.Lock()
 	if _, ok := Setting.Listener.KCP[i]; ok {
 		Setting.Listener.KCP[i].Close()
 		delete(Setting.Listener.KCP, i)
 	}
+	Setting.Listener.Turn.Unlock()
+
 	Setting.Rules.Lock()
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
