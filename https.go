@@ -39,7 +39,7 @@ func LoadHttpsRules(i string) {
 
 	Setting.Listener.Turn.Lock()
 	Setting.Listener.HTTPS[strings.ToLower(r.Listen)] = i
-	Setting.Listener.Turn.Lock()
+	Setting.Listener.Turn.Unlock()
 }
 
 func DeleteHttpsRules(i string) {
