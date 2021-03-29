@@ -37,7 +37,7 @@ func LoadHttpRules(i string) {
 	}
 	Setting.Listener.Turn.RUnlock()
 
-	zlog.Info("Loaded [", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
+	zlog.Info("Loaded [", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 
 	Setting.Listener.Turn.Lock()
 	Setting.Listener.HTTP[strings.ToLower(r.Listen)] = i
