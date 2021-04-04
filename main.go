@@ -38,14 +38,16 @@ type CSafeRule struct {
 }
 
 type Listener struct {
-	Turn  sync.RWMutex
-	TCP   map[string]*net.TCPListener
-	UDP   map[string]*net.UDPConn
-	KCP   map[string]*kcp.Listener
-	HTTP  map[string]string
-	HTTPS map[string]string
-	WS    map[string]*net.TCPListener
-	WSC   map[string]*net.TCPListener
+	Turn        sync.RWMutex
+	HTTPServer  net.Listener
+	HTTPSServer net.Listener
+	TCP         map[string]*net.TCPListener
+	UDP         map[string]*net.UDPConn
+	KCP         map[string]*kcp.Listener
+	HTTP        map[string]string
+	HTTPS       map[string]string
+	WS          map[string]*net.TCPListener
+	WSC         map[string]*net.TCPListener
 }
 
 type Config struct {
@@ -108,6 +110,7 @@ func main() {
 		Setting.Listener.WS = make(map[string]*net.TCPListener)
 		Setting.Listener.WSC = make(map[string]*net.TCPListener)
 	}
+
 	if LogFile != "" {
 		os.Remove(LogFile)
 		logfile_writer, err := os.OpenFile(LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -176,6 +179,7 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 		zlog.Error("[API] Unsupport Method. Client IP: " + r.RemoteAddr + " URI: " + r.RequestURI)
 		return
 	}
+
 	postdata, _ := ioutil.ReadAll(r.Body)
 	err := json.Unmarshal(postdata, &NewConfig)
 	if err != nil {
@@ -237,6 +241,31 @@ func LoadListen() {
 		}
 	}
 }
+func CloseAllListener(){
+	Setting.Listener.Turn.Lock()
+	if Setting.Listener.HTTPServer != nil {
+		Setting.Listener.HTTPServer.Close()
+	}
+	if Setting.Listener.HTTPSServer != nil {
+		Setting.Listener.HTTPSServer.Close()
+	}
+	for _, ln := range Setting.Listener.TCP {
+		ln.Close()
+	}
+	for _, ln := range Setting.Listener.UDP {
+		ln.Close()
+	}
+	for _, ln := range Setting.Listener.KCP {
+		ln.Close()
+	}
+	for _, ln := range Setting.Listener.WS {
+		ln.Close()
+	}
+	for _, ln := range Setting.Listener.WSC {
+		ln.Close()
+	}
+	Setting.Listener.Turn.Unlock()
+}
 
 func DeleteRules(i string) {
 	if _, ok := Setting.Config.Rules[i]; !ok {
@@ -265,19 +294,18 @@ func DeleteRules(i string) {
 func LoadNewRules(i string) {
 	Protocol := Setting.Config.Rules[i].Protocol
 
-	if Protocol == "tcp" {
+	switch Protocol {
+	case "tcp":
 		LoadTCPRules(i)
-	} else if Protocol == "udp" {
+	case "udp":
 		LoadUDPRules(i)
-	} else if Protocol == "kcp" {
+	case "kcp":
 		LoadKCPRules(i)
-	} else if Protocol == "http" {
-		LoadHttpRules(i)
-	} else if Protocol == "https" {
+	case "http":
 		LoadHttpsRules(i)
-	} else if Protocol == "ws" {
+	case "ws":
 		LoadWSRules(i)
-	} else if Protocol == "wsc" {
+	case "wsc":
 		LoadWSCRules(i)
 	}
 }
@@ -338,6 +366,7 @@ func updateConfig() {
 func saveConfig() {
 	defer Setting.Rules.Unlock()
 	defer Setting.Users.Unlock()
+	CloseAllListener()
 	Setting.Rules.Lock()
 	Setting.Users.Lock()
 

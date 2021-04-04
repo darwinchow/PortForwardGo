@@ -17,6 +17,10 @@ func HttpInit() {
 		zlog.Error("[HTTP] Listen failed , Error: ", err)
 		return
 	}
+
+	Setting.Listener.Turn.Lock()
+	Setting.Listener.HTTPServer = l
+	Setting.Listener.Turn.Unlock()
 	for {
 		c, err := l.Accept()
 		if err != nil {
