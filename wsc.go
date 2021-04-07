@@ -21,9 +21,9 @@ func LoadWSCRules(i string) {
 	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
-		zlog.Info("Loaded [", i, "] (WebSocket Client) ", r.Listen, " => ", ParseForward(r))
+		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket Client) ", r.Listen, " => ", ParseForward(r))
 	} else {
-		zlog.Error("Load failed [", i, "] (WebSocket Client) Error:", err)
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket Client) Error:", err)
 		SendListenError(i)
 		return
 	}
@@ -56,7 +56,7 @@ func DeleteWSCRules(i string) {
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
-	zlog.Info("Deleted [", i, "] (WebSocket Client)", r.Listen, " => ", ParseForward(r))
+	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket Client)", r.Listen, " => ", ParseForward(r))
 
 }
 

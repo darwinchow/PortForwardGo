@@ -22,8 +22,12 @@ func HttpsInit() {
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			continue
+			if err, ok := err.(net.Error); ok && err.Temporary() {
+				continue
+			}
+			break
 		}
+
 		go https_handle(c)
 	}
 }
@@ -39,7 +43,7 @@ func LoadHttpsRules(i string) {
 	}
 	Setting.Listener.Turn.RUnlock()
 
-	zlog.Info("Loaded [", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
+	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
 
 	Setting.Listener.Turn.Lock()
 	Setting.Listener.HTTPS[strings.ToLower(r.Listen)] = i
@@ -52,7 +56,7 @@ func DeleteHttpsRules(i string) {
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
 
-	zlog.Info("Deleted [", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
+	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
 
 	Setting.Listener.Turn.Lock()
 	delete(Setting.Listener.HTTPS, strings.ToLower(r.Listen))
@@ -157,12 +161,14 @@ func https_handle(conn net.Conn) {
 	}
 
 	if hostname == "" {
+		zlog.Error("[HTTPS] No Hostname")
 		conn.Close()
 		return
 	}
 
 	i, ok := Setting.Listener.HTTPS[hostname]
 	if !ok {
+		zlog.Error("[HTTPS] Not Found Hostname")
 		conn.Close()
 		return
 	}

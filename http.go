@@ -24,7 +24,10 @@ func HttpInit() {
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			continue
+			if err, ok := err.(net.Error); ok && err.Temporary() {
+				continue
+			}
+			break
 		}
 		go http_handle(c)
 	}
@@ -40,9 +43,7 @@ func LoadHttpRules(i string) {
 		return
 	}
 	Setting.Listener.Turn.RUnlock()
-
-	zlog.Info("Loaded [", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
-
+	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 	Setting.Listener.Turn.Lock()
 	Setting.Listener.HTTP[strings.ToLower(r.Listen)] = i
 	Setting.Listener.Turn.Unlock()
@@ -54,7 +55,7 @@ func DeleteHttpRules(i string) {
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
 
-	zlog.Info("Deleted [", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
+	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 
 	Setting.Listener.Turn.Lock()
 	delete(Setting.Listener.HTTP, strings.ToLower(r.Listen))
@@ -88,6 +89,7 @@ func http_handle(conn net.Conn) {
 	}
 
 	if hostname == "" {
+		zlog.Error("[HTTP] No Hostname")
 		conn.Write([]byte(HttpStatus(503)))
 		conn.Write([]byte("\n"))
 		conn.Write([]byte(Page503))
@@ -97,6 +99,7 @@ func http_handle(conn net.Conn) {
 
 	i, ok := Setting.Listener.HTTP[hostname]
 	if !ok {
+		zlog.Error("[HTTP] Not Found Hostname")
 		conn.Write([]byte(HttpStatus(503)))
 		conn.Write([]byte("\n"))
 		conn.Write([]byte(Page503))

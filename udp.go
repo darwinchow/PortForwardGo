@@ -87,9 +87,9 @@ func LoadUDPRules(i string) {
 	ln, err := net.ListenUDP("udp", address)
 
 	if err == nil {
-		zlog.Info("Loaded [", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
+		zlog.Info("Loaded [", r.UserID, "][", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 	} else {
-		zlog.Error("Load failed [", i, "] (UDP) Error: ", err)
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (UDP) Error: ", err)
 		SendListenError(i)
 		return
 	}
@@ -112,7 +112,7 @@ func DeleteUDPRules(i string) {
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
-	zlog.Info("Deleted [", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
+	zlog.Info("Deleted [", r.UserID, "][", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 }
 
 func AcceptUDP(serv *net.UDPConn, index string) {
