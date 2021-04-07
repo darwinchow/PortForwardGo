@@ -302,6 +302,8 @@ func LoadNewRules(i string) {
 	case "kcp":
 		LoadKCPRules(i)
 	case "http":
+		LoadHttpRules(i)
+	case "https":
 		LoadHttpsRules(i)
 	case "ws":
 		LoadWSRules(i)

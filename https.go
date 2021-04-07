@@ -168,7 +168,7 @@ func https_handle(conn net.Conn) {
 
 	i, ok := Setting.Listener.HTTPS[hostname]
 	if !ok {
-		zlog.Error("[HTTPS] Not Found Hostname")
+		zlog.Error("[HTTPS] Not Found Hostname: ",hostname)
 		conn.Close()
 		return
 	}
