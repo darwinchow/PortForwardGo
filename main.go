@@ -26,6 +26,7 @@ import (
 
 var Setting CSafeRule
 var version string
+var quit chan os.Signal
 
 var ConfigFile string
 var LogFile string
@@ -159,14 +160,10 @@ func main() {
 		}
 	}()
 
-	sigs := make(chan os.Signal, 1)
-	done := make(chan bool, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		done <- true
-	}()
-	<-done
+	quit = make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	<-quit
 	saveConfig()
 	zlog.PrintText("Exiting")
 }
@@ -241,7 +238,7 @@ func LoadListen() {
 		}
 	}
 }
-func CloseAllListener(){
+func CloseAllListener() {
 	Setting.Listener.Turn.Lock()
 	if Setting.Listener.HTTPServer != nil {
 		Setting.Listener.HTTPServer.Close()
@@ -413,7 +410,7 @@ func getConfig() {
 	})
 	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	if status == 503 {
-		zlog.Error("The remote server returned an error message: ", string(confF))
+		zlog.Fatal("The remote server returned an error message: ", string(confF))
 		return
 	}
 
@@ -492,6 +489,9 @@ func copyIO(src, dest net.Conn, r Rule) {
 	if NowUser.Quota <= NowUser.Used {
 		go updateConfig()
 	}
+	<-quit
+	src.Close()
+	dest.Close()
 }
 
 func limitWrite(dest net.Conn, userid string, buf []byte) {

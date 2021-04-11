@@ -89,7 +89,6 @@ func http_handle(conn net.Conn) {
 	}
 
 	if hostname == "" {
-		zlog.Error("[HTTP] No Hostname")
 		conn.Write([]byte(HttpStatus(503)))
 		conn.Write([]byte("\n"))
 		conn.Write([]byte(Page503))
@@ -99,7 +98,6 @@ func http_handle(conn net.Conn) {
 
 	i, ok := Setting.Listener.HTTP[hostname]
 	if !ok {
-		zlog.Error("[HTTP] Not Found Hostname: ",hostname)
 		conn.Write([]byte(HttpStatus(503)))
 		conn.Write([]byte("\n"))
 		conn.Write([]byte(Page503))
