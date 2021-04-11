@@ -26,7 +26,6 @@ import (
 
 var Setting CSafeRule
 var version string
-var quit chan os.Signal
 
 var ConfigFile string
 var LogFile string
@@ -160,7 +159,7 @@ func main() {
 		}
 	}()
 
-	quit = make(chan os.Signal, 1)
+	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	<-quit
@@ -210,11 +209,11 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 		Setting.Rules.Lock()
 		for index, _ := range NewConfig.Rules {
 			if NewConfig.Rules[index].Status == "Deleted" {
-				go DeleteRules(index)
+				DeleteRules(index)
 				continue
 			} else if NewConfig.Rules[index].Status == "Created" {
 				Setting.Config.Rules[index] = NewConfig.Rules[index]
-				go LoadNewRules(index)
+				 LoadNewRules(index)
 				continue
 			} else {
 				Setting.Config.Rules[index] = NewConfig.Rules[index]
@@ -272,19 +271,19 @@ func DeleteRules(i string) {
 	Protocol := Setting.Config.Rules[i].Protocol
 	switch Protocol {
 	case "tcp":
-		DeleteTCPRules(i)
+		go DeleteTCPRules(i)
 	case "udp":
-		DeleteUDPRules(i)
+		go DeleteUDPRules(i)
 	case "kcp":
-		DeleteKCPRules(i)
+		go DeleteKCPRules(i)
 	case "http":
-		DeleteHttpRules(i)
+		go DeleteHttpRules(i)
 	case "https":
-		DeleteHttpsRules(i)
+		go DeleteHttpsRules(i)
 	case "ws":
-		DeleteWSRules(i)
+		go DeleteWSRules(i)
 	case "wsc":
-		DeleteWSCRules(i)
+		go DeleteWSCRules(i)
 	}
 }
 
@@ -293,19 +292,52 @@ func LoadNewRules(i string) {
 
 	switch Protocol {
 	case "tcp":
-		LoadTCPRules(i)
+		go LoadTCPRules(i)
 	case "udp":
-		LoadUDPRules(i)
+		go LoadUDPRules(i)
 	case "kcp":
-		LoadKCPRules(i)
+		go LoadKCPRules(i)
 	case "http":
-		LoadHttpRules(i)
+		go LoadHttpRules(i)
 	case "https":
-		LoadHttpsRules(i)
+		go LoadHttpsRules(i)
 	case "ws":
-		LoadWSRules(i)
+		go LoadWSRules(i)
 	case "wsc":
-		LoadWSCRules(i)
+		go LoadWSCRules(i)
+	}
+}
+
+func getConfig() {
+	var NewConfig Config
+	jsonData, _ := json.Marshal(map[string]interface{}{
+		"Action":  "GetConfig",
+		"NodeID":  apic.NodeID,
+		"Token":   md5_encode(apic.APIToken),
+		"Version": version,
+	})
+	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	if status == 503 {
+		zlog.Fatal("The remote server returned an error message: ", string(confF))
+		return
+	}
+
+	if err != nil {
+		zlog.Fatal("Cannot read the online config file. (NetWork Error) " + err.Error())
+		return
+	}
+
+	err = json.Unmarshal(confF, &NewConfig)
+	if err != nil {
+		zlog.Fatal("Cannot read the port forward config file. (Parse Error) " + err.Error())
+		return
+	}
+	Setting.Config = NewConfig
+	zlog.Info("Update Cycle: ", Setting.Config.UpdateInfoCycle, " seconds")
+	LoadListen()
+
+	for index, _ := range NewConfig.Rules {
+		LoadNewRules(index)
 	}
 }
 
@@ -352,10 +384,10 @@ func updateConfig() {
 
 	for index, rule := range Setting.Config.Rules {
 		if rule.Status == "Deleted" {
-			go DeleteRules(index)
+			 DeleteRules(index)
 			continue
 		} else if rule.Status == "Created" {
-			go LoadNewRules(index)
+			 LoadNewRules(index)
 			continue
 		}
 	}
@@ -398,39 +430,6 @@ func SendListenError(i string) {
 		"RuleID":  i,
 	})
 	sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
-}
-
-func getConfig() {
-	var NewConfig Config
-	jsonData, _ := json.Marshal(map[string]interface{}{
-		"Action":  "GetConfig",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
-		"Version": version,
-	})
-	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
-	if status == 503 {
-		zlog.Fatal("The remote server returned an error message: ", string(confF))
-		return
-	}
-
-	if err != nil {
-		zlog.Fatal("Cannot read the online config file. (NetWork Error) " + err.Error())
-		return
-	}
-
-	err = json.Unmarshal(confF, &NewConfig)
-	if err != nil {
-		zlog.Fatal("Cannot read the port forward config file. (Parse Error) " + err.Error())
-		return
-	}
-	Setting.Config = NewConfig
-	zlog.Info("Update Cycle: ", Setting.Config.UpdateInfoCycle, " seconds")
-	LoadListen()
-
-	for index, _ := range NewConfig.Rules {
-		go LoadNewRules(index)
-	}
 }
 
 func sendRequest(url string, body io.Reader, addHeaders map[string]string, method string) (statuscode int, resp []byte, err error) {
@@ -489,9 +488,6 @@ func copyIO(src, dest net.Conn, r Rule) {
 	if NowUser.Quota <= NowUser.Used {
 		go updateConfig()
 	}
-	<-quit
-	src.Close()
-	dest.Close()
 }
 
 func limitWrite(dest net.Conn, userid string, buf []byte) {
