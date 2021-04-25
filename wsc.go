@@ -1,7 +1,7 @@
 package main
 
 import (
-	"PortForwardGo/zlog"
+	"github.com/CoiaPrant/zlog"
 	"net"
 
 	"golang.org/x/net/websocket"

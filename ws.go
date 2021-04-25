@@ -1,7 +1,7 @@
 package main
 
 import (
-	"PortForwardGo/zlog"
+	"github.com/CoiaPrant/zlog"
 	"io"
 	"net"
 	"net/http"

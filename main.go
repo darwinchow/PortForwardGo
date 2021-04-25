@@ -1,7 +1,7 @@
 package main
 
 import (
-	"PortForwardGo/zlog"
+	"github.com/CoiaPrant/zlog"
 	"bytes"
 	"crypto/md5"
 	"encoding/hex"
