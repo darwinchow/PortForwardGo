@@ -81,7 +81,6 @@ func tcp_handleRequest(conn net.Conn, index string) {
 			limitWrite(proxy, r.UserID, header)
 		}
 	}
-
 	go copyIO(conn, proxy, r)
 	go copyIO(proxy, conn, r)
 }

@@ -1,0 +1,15 @@
+[Unit]
+Description=PortForwardGo Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Restart=always
+RestartSec=20s
+LimitNOFILE=1048576
+LimitNPROC=1048576
+ExecStart=/etc/PortForwardGo/PortForwardGo -config=/etc/PortForwardGo/config.json -log=/etc/PortForwardGo/run.log
+
+[Install]
+WantedBy=multi-user.target
