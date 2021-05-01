@@ -45,10 +45,7 @@ func LoadWSSRules(i string) {
 		WSS_Handle(i, ws)
 	}))
 
-	err = http.ServeTLS(ln, Router, certFile, keyFile)
-	if err != nil {
-		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS) Error: ", err)
-	}
+	http.ServeTLS(ln, Router, certFile, keyFile)
 }
 
 func DeleteWSSRules(i string) {
