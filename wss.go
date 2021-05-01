@@ -47,7 +47,7 @@ func LoadWSSRules(i string) {
 
 	err = http.ServeTLS(ln, Router, certFile, keyFile)
 	if err != nil {
-		zlog.Error("Load failed [", r.UserID, "][", i, "] (Websocket TLS) Error: ", err)
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS) Error: ", err)
 	}
 }
 

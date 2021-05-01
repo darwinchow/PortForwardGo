@@ -580,6 +580,7 @@ func CreateTLSFile(certFile, keyFile string) {
 	_, resp, err := sendRequest("https://api.ip.sb/ip", nil, nil, "GET")
 	if err == nil {
 		ip = string(resp)
+		ip = strings.Replace(ip, "\n", "", -1)
 	} else {
 		ip = "127.0.0.1"
 	}
