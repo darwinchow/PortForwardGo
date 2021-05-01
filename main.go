@@ -46,18 +46,16 @@ type CSafeRule struct {
 }
 
 type Listener struct {
-	Turn        sync.RWMutex
-	HTTPServer  net.Listener
-	HTTPSServer net.Listener
-	TCP         map[string]*net.TCPListener
-	UDP         map[string]*net.UDPConn
-	KCP         map[string]*kcp.Listener
-	HTTP        map[string]string
-	HTTPS       map[string]string
-	WS          map[string]*net.TCPListener
-	WSC         map[string]*net.TCPListener
-	WSS         map[string]*net.TCPListener
-	WSSC        map[string]*net.TCPListener
+	Turn  sync.RWMutex
+	TCP   map[string]*net.TCPListener
+	UDP   map[string]*net.UDPConn
+	KCP   map[string]*kcp.Listener
+	HTTP  map[string]string
+	HTTPS map[string]string
+	WS    map[string]*net.TCPListener
+	WSC   map[string]*net.TCPListener
+	WSS   map[string]*net.TCPListener
+	WSSC  map[string]*net.TCPListener
 }
 
 type Config struct {
@@ -261,21 +259,19 @@ func LoadListen() {
 		if value.Enable {
 			switch name {
 			case "Http":
-				go HttpInit()
+				go HttpInit(value.Port)
 			case "Https":
-				go HttpsInit()
+				go HttpsInit(value.Port)
+			case "Http_2":
+				go HttpInit(value.Port)
+			case "Https_2":
+				go HttpsInit(value.Port)
 			}
 		}
 	}
 }
 func CloseAllListener() {
 	Setting.Listener.Turn.Lock()
-	if Setting.Listener.HTTPServer != nil {
-		Setting.Listener.HTTPServer.Close()
-	}
-	if Setting.Listener.HTTPSServer != nil {
-		Setting.Listener.HTTPSServer.Close()
-	}
 	for _, ln := range Setting.Listener.TCP {
 		ln.Close()
 	}

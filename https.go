@@ -8,17 +8,14 @@ import (
 	proxyprotocol "github.com/pires/go-proxyproto"
 )
 
-func HttpsInit() {
-	zlog.Info("[HTTPS] Listening ", Setting.Config.Listen["Https"].Port)
-	l, err := net.Listen("tcp", ":"+Setting.Config.Listen["Https"].Port)
+func HttpsInit(port string) {
+	zlog.Info("[HTTPS] Listening ", port)
+	l, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		zlog.Error("[HTTPS] Listen failed , Error: ", err)
 		return
 	}
 
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.HTTPSServer = l
-	Setting.Listener.Turn.Unlock()
 	for {
 		c, err := l.Accept()
 		if err != nil {

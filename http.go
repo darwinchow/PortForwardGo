@@ -10,17 +10,14 @@ import (
 	proxyprotocol "github.com/pires/go-proxyproto"
 )
 
-func HttpInit() {
-	zlog.Info("[HTTP] Listening ", Setting.Config.Listen["Http"].Port)
-	l, err := net.Listen("tcp", ":"+Setting.Config.Listen["Http"].Port)
+func HttpInit(port string) {
+	zlog.Info("[HTTP] Listening ", port)
+	l, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		zlog.Error("[HTTP] Listen failed , Error: ", err)
 		return
 	}
 
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.HTTPServer = l
-	Setting.Listener.Turn.Unlock()
 	for {
 		c, err := l.Accept()
 		if err != nil {
