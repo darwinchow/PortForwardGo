@@ -27,7 +27,7 @@ func LoadWSSRules(i string) {
 		Setting.Listener.Turn.Lock()
 		Setting.Listener.WSS[i] = ln
 		Setting.Listener.Turn.Unlock()
-		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket TLS )", r.Listen, " => ", ParseForward(r))
+		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket TLS)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (Websocket TLS) Error: ", err)
 		SendListenError(i)
@@ -45,7 +45,10 @@ func LoadWSSRules(i string) {
 		WSS_Handle(i, ws)
 	}))
 
-	http.ServeTLS(ln, Router, certFile, keyFile)
+	err = http.ServeTLS(ln, Router, certFile, keyFile)
+	if err != nil {
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (Websocket TLS) Error: ", err)
+	}
 }
 
 func DeleteWSSRules(i string) {

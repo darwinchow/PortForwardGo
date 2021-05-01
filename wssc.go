@@ -74,7 +74,7 @@ func wssc_handleRequest(conn net.Conn, index string) {
 
 	ws_config, err := websocket.NewConfig("wss://"+ParseForward(r)+"/ws/", "https://"+ParseForward(r)+"/ws/")
 	if err != nil {
-		_ = conn.Close()
+		conn.Close()
 		return
 	}
 	ws_config.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36")
@@ -83,7 +83,7 @@ func wssc_handleRequest(conn net.Conn, index string) {
 	ws_config.Header.Set("X-Forward-Address", conn.RemoteAddr().String())
 	proxy, err := websocket.DialConfig(ws_config)
 	if err != nil {
-		_ = conn.Close()
+		conn.Close()
 		return
 	}
 	proxy.PayloadType = websocket.BinaryFrame
