@@ -1,15 +1,21 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
 	"bytes"
 	"crypto/md5"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"flag"
 	"fmt"
+	"github.com/CoiaPrant/zlog"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -29,6 +35,8 @@ var version string
 
 var ConfigFile string
 var LogFile string
+var certFile string
+var keyFile string
 
 type CSafeRule struct {
 	Listener Listener
@@ -48,6 +56,8 @@ type Listener struct {
 	HTTPS       map[string]string
 	WS          map[string]*net.TCPListener
 	WSC         map[string]*net.TCPListener
+	WSS         map[string]*net.TCPListener
+	WSSC        map[string]*net.TCPListener
 }
 
 type Config struct {
@@ -90,8 +100,10 @@ var apic APIConfig
 
 func main() {
 	{
-		flag.StringVar(&ConfigFile, "config", "config.json", "The config file location.")
-		flag.StringVar(&LogFile, "log", "", "The log file location.")
+		flag.StringVar(&ConfigFile, "config", "config.json", "The config file location")
+		flag.StringVar(&certFile, "certfile", "public.pem", "The ssl cert file location")
+		flag.StringVar(&keyFile, "keyfile", "private.key.", "The ssl key file location")
+		flag.StringVar(&LogFile, "log", "", "The log file location")
 		help := flag.Bool("h", false, "Show help")
 		flag.Parse()
 
@@ -109,6 +121,8 @@ func main() {
 		Setting.Listener.HTTPS = make(map[string]string)
 		Setting.Listener.WS = make(map[string]*net.TCPListener)
 		Setting.Listener.WSC = make(map[string]*net.TCPListener)
+		Setting.Listener.WSS = make(map[string]*net.TCPListener)
+		Setting.Listener.WSSC = make(map[string]*net.TCPListener)
 	}
 
 	if LogFile != "" {
@@ -119,6 +133,17 @@ func main() {
 			zlog.Info("Log file location: ", LogFile)
 		}
 	}
+
+	_, err := os.Stat(certFile)
+	if err != nil {
+		CreateTLSFile(certFile, keyFile)
+	}
+
+	_, err = os.Stat(keyFile)
+	if err != nil {
+		CreateTLSFile(certFile, keyFile)
+	}
+
 	zlog.Info("Node Version: ", version)
 
 	apif, err := ioutil.ReadFile(ConfigFile)
@@ -186,7 +211,12 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(200)
-	io.WriteString(w, "Success")
+
+	jsonData, _ := json.Marshal(map[string]interface{}{
+		"Result": true,
+	})
+	w.Write(jsonData)
+
 	zlog.Success("[API] Client IP: " + r.RemoteAddr + " URI: " + r.RequestURI)
 
 	go func() {
@@ -213,7 +243,7 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 				continue
 			} else if NewConfig.Rules[index].Status == "Created" {
 				Setting.Config.Rules[index] = NewConfig.Rules[index]
-				 LoadNewRules(index)
+				LoadNewRules(index)
 				continue
 			} else {
 				Setting.Config.Rules[index] = NewConfig.Rules[index]
@@ -221,6 +251,7 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		Setting.Rules.Unlock()
+
 	}()
 	return
 }
@@ -260,7 +291,38 @@ func CloseAllListener() {
 	for _, ln := range Setting.Listener.WSC {
 		ln.Close()
 	}
+	for _, ln := range Setting.Listener.WSS {
+		ln.Close()
+	}
+	for _, ln := range Setting.Listener.WSSC {
+		ln.Close()
+	}
 	Setting.Listener.Turn.Unlock()
+}
+
+func LoadNewRules(i string) {
+	Protocol := Setting.Config.Rules[i].Protocol
+
+	switch Protocol {
+	case "tcp":
+		go LoadTCPRules(i)
+	case "udp":
+		go LoadUDPRules(i)
+	case "kcp":
+		go LoadKCPRules(i)
+	case "http":
+		go LoadHttpRules(i)
+	case "https":
+		go LoadHttpsRules(i)
+	case "ws":
+		go LoadWSRules(i)
+	case "wsc":
+		go LoadWSCRules(i)
+	case "wss":
+		go LoadWSSRules(i)
+	case "wssc":
+		go LoadWSSCRules(i)
+	}
 }
 
 func DeleteRules(i string) {
@@ -284,27 +346,10 @@ func DeleteRules(i string) {
 		go DeleteWSRules(i)
 	case "wsc":
 		go DeleteWSCRules(i)
-	}
-}
-
-func LoadNewRules(i string) {
-	Protocol := Setting.Config.Rules[i].Protocol
-
-	switch Protocol {
-	case "tcp":
-		go LoadTCPRules(i)
-	case "udp":
-		go LoadUDPRules(i)
-	case "kcp":
-		go LoadKCPRules(i)
-	case "http":
-		go LoadHttpRules(i)
-	case "https":
-		go LoadHttpsRules(i)
-	case "ws":
-		go LoadWSRules(i)
-	case "wsc":
-		go LoadWSCRules(i)
+	case "wss":
+		go DeleteWSSRules(i)
+	case "wssc":
+		go DeleteWSSCRules(i)
 	}
 }
 
@@ -384,10 +429,10 @@ func updateConfig() {
 
 	for index, rule := range Setting.Config.Rules {
 		if rule.Status == "Deleted" {
-			 DeleteRules(index)
+			DeleteRules(index)
 			continue
 		} else if rule.Status == "Created" {
-			 LoadNewRules(index)
+			LoadNewRules(index)
 			continue
 		}
 	}
@@ -516,4 +561,49 @@ func ParseForward(r Rule) string {
 	}
 
 	return r.RemoteHost + ":" + strconv.Itoa(r.RemotePort)
+}
+
+func CreateTLSFile(certFile, keyFile string) {
+	var ip string
+	os.Remove(certFile)
+	os.Remove(keyFile)
+	max := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, _ := rand.Int(rand.Reader, max)
+	subject := pkix.Name{
+		Country:            []string{"US"},
+		Province:           []string{"WDC"},
+		Organization:       []string{"Microsoft Corporation"},
+		OrganizationalUnit: []string{"Microsoft Corporation"},
+		CommonName:         "www.microstft.com",
+	}
+
+	_, resp, err := sendRequest("https://api.ip.sb/ip", nil, nil, "GET")
+	if err == nil {
+		ip = string(resp)
+	} else {
+		ip = "127.0.0.1"
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      subject,
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.ParseIP(ip)},
+	}
+
+	pk, _ := rsa.GenerateKey(rand.Reader, 2048)
+
+	derBytes, _ := x509.CreateCertificate(rand.Reader, &template, &template, &pk.PublicKey, pk)
+	certOut, _ := os.Create(certFile)
+	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	certOut.Close()
+
+	keyOut, _ := os.Create(keyFile)
+	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(pk)})
+	keyOut.Close()
+	zlog.Success("Created the ssl certfile,location: ", certFile)
+	zlog.Success("Created the ssl keyfile,location: ", keyFile)
 }

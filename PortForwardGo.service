@@ -9,7 +9,7 @@ Restart=always
 RestartSec=20s
 LimitNOFILE=1048576
 LimitNPROC=1048576
-ExecStart=/etc/PortForwardGo/PortForwardGo -config=/etc/PortForwardGo/config.json -log=/etc/PortForwardGo/run.log
+ExecStart=/etc/PortForwardGo/PortForwardGo -config=/etc/PortForwardGo/config.json -log=/etc/PortForwardGo/run.log -certfile=/etc/PortForwardGo/public.pem -certfile=/etc/PortForwardGo/private.key
 
 [Install]
 WantedBy=multi-user.target

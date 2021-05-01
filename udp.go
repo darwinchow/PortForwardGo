@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
 	"errors"
+	"github.com/CoiaPrant/zlog"
 	"net"
 	"time"
 )
@@ -87,15 +87,15 @@ func LoadUDPRules(i string) {
 	ln, err := net.ListenUDP("udp", address)
 
 	if err == nil {
+		Setting.Listener.Turn.Lock()
+		Setting.Listener.UDP[i] = ln
+		Setting.Listener.Turn.Unlock()
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (UDP) Error: ", err)
 		SendListenError(i)
 		return
 	}
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.UDP[i] = ln
-	Setting.Listener.Turn.Unlock()
 
 	AcceptUDP(ln, i)
 }
@@ -112,6 +112,7 @@ func DeleteUDPRules(i string) {
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 }
 

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
 	"bufio"
 	"container/list"
+	"github.com/CoiaPrant/zlog"
 	"net"
 	"strings"
 
@@ -43,10 +43,12 @@ func LoadHttpRules(i string) {
 		return
 	}
 	Setting.Listener.Turn.RUnlock()
-	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
+
 	Setting.Listener.Turn.Lock()
 	Setting.Listener.HTTP[strings.ToLower(r.Listen)] = i
 	Setting.Listener.Turn.Unlock()
+
+	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
 func DeleteHttpRules(i string) {
@@ -55,11 +57,11 @@ func DeleteHttpRules(i string) {
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
 
-	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
-
 	Setting.Listener.Turn.Lock()
 	delete(Setting.Listener.HTTP, strings.ToLower(r.Listen))
 	Setting.Listener.Turn.Unlock()
+
+	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
 func http_handle(conn net.Conn) {
