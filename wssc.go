@@ -7,9 +7,9 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-func LoadWSCRules(i string) {
+func LoadWSSCRules(i string) {
 	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.WSC[i]; ok {
+	if _, ok := Setting.Listener.WSSC[i]; ok {
 		return
 	}
 	Setting.Listener.Turn.RUnlock()
@@ -23,11 +23,11 @@ func LoadWSCRules(i string) {
 
 	if err == nil {
 		Setting.Listener.Turn.Lock()
-		Setting.Listener.WSC[i] = ln
+		Setting.Listener.WSSC[i] = ln
 		Setting.Listener.Turn.Unlock()
-		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket Client) ", r.Listen, " => ", ParseForward(r))
+		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket TLS Client) ", r.Listen, " => ", ParseForward(r))
 	} else {
-		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket Client) Error:", err)
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS Client) Error:", err)
 		SendListenError(i)
 		return
 	}
@@ -42,15 +42,15 @@ func LoadWSCRules(i string) {
 			break
 		}
 
-		go wsc_handleRequest(conn, i)
+		go wssc_handleRequest(conn, i)
 	}
 }
 
-func DeleteWSCRules(i string) {
+func DeleteWSSCRules(i string) {
 	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.WSC[i]; ok {
-		Setting.Listener.WSC[i].Close()
-		delete(Setting.Listener.WSC, i)
+	if _, ok := Setting.Listener.WSSC[i]; ok {
+		Setting.Listener.WSSC[i].Close()
+		delete(Setting.Listener.WSSC, i)
 	}
 	Setting.Listener.Turn.Unlock()
 
@@ -59,10 +59,10 @@ func DeleteWSCRules(i string) {
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
 
-	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket Client)", r.Listen, " => ", ParseForward(r))
+	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket TLS Client)", r.Listen, " => ", ParseForward(r))
 }
 
-func wsc_handleRequest(conn net.Conn, index string) {
+func wssc_handleRequest(conn net.Conn, index string) {
 	Setting.Rules.RLock()
 	r := Setting.Config.Rules[index]
 	Setting.Rules.RUnlock()
@@ -72,7 +72,7 @@ func wsc_handleRequest(conn net.Conn, index string) {
 		return
 	}
 
-	ws_config, err := websocket.NewConfig("ws://"+ParseForward(r)+"/ws/", "http://"+ParseForward(r)+"/ws/")
+	ws_config, err := websocket.NewConfig("wss://"+ParseForward(r)+"/ws/", "https://"+ParseForward(r)+"/ws/")
 	if err != nil {
 		conn.Close()
 		return

@@ -14,7 +14,7 @@ case "$1" in
     
     start)
         if [ ! -n "$PIDF" ];then
-            nohup /etc/PortForwardGo/PortForwardGo -config /etc/PortForwardGo/config.json -log /etc/PortForwardGo/run.log &
+            nohup /etc/PortForwardGo/PortForwardGo -config=/etc/PortForwardGo/config.json -log=/etc/PortForwardGo/run.log -certfile=/etc/PortForwardGo/public.pem -keyfile=/etc/PortForwardGo/private.key &
             echo "PortForwardGo启动完成"
         else
             echo "PortForwardGo已启动! 请勿重复启动"

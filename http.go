@@ -1,26 +1,23 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
 	"bufio"
 	"container/list"
+	"github.com/CoiaPrant/zlog"
 	"net"
 	"strings"
 
 	proxyprotocol "github.com/pires/go-proxyproto"
 )
 
-func HttpInit() {
-	zlog.Info("[HTTP] Listening ", Setting.Config.Listen["Http"].Port)
-	l, err := net.Listen("tcp", ":"+Setting.Config.Listen["Http"].Port)
+func HttpInit(port string) {
+	zlog.Info("[HTTP] Listening ", port)
+	l, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		zlog.Error("[HTTP] Listen failed , Error: ", err)
 		return
 	}
 
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.HTTPServer = l
-	Setting.Listener.Turn.Unlock()
 	for {
 		c, err := l.Accept()
 		if err != nil {
@@ -43,10 +40,12 @@ func LoadHttpRules(i string) {
 		return
 	}
 	Setting.Listener.Turn.RUnlock()
-	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
+
 	Setting.Listener.Turn.Lock()
 	Setting.Listener.HTTP[strings.ToLower(r.Listen)] = i
 	Setting.Listener.Turn.Unlock()
+
+	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
 func DeleteHttpRules(i string) {
@@ -55,11 +54,11 @@ func DeleteHttpRules(i string) {
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
 
-	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
-
 	Setting.Listener.Turn.Lock()
 	delete(Setting.Listener.HTTP, strings.ToLower(r.Listen))
 	Setting.Listener.Turn.Unlock()
+
+	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
 func http_handle(conn net.Conn) {

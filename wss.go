@@ -10,22 +10,9 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-type Addr struct {
-	NetworkType   string
-	NetworkString string
-}
-
-func (this *Addr) Network() string {
-	return this.NetworkType
-}
-
-func (this *Addr) String() string {
-	return this.NetworkString
-}
-
-func LoadWSRules(i string) {
+func LoadWSSRules(i string) {
 	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.WS[i]; ok {
+	if _, ok := Setting.Listener.WSS[i]; ok {
 		return
 	}
 	Setting.Listener.Turn.RUnlock()
@@ -38,11 +25,11 @@ func LoadWSRules(i string) {
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
 		Setting.Listener.Turn.Lock()
-		Setting.Listener.WS[i] = ln
+		Setting.Listener.WSS[i] = ln
 		Setting.Listener.Turn.Unlock()
-		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket)", r.Listen, " => ", ParseForward(r))
+		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket TLS)", r.Listen, " => ", ParseForward(r))
 	} else {
-		zlog.Error("Load failed [", r.UserID, "][", i, "] (Websocket) Error: ", err)
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (Websocket TLS) Error: ", err)
 		SendListenError(i)
 		return
 	}
@@ -55,17 +42,17 @@ func LoadWSRules(i string) {
 	})
 
 	Router.Handle("/ws/", websocket.Handler(func(ws *websocket.Conn) {
-		WS_Handle(i, ws)
+		WSS_Handle(i, ws)
 	}))
 
-	http.Serve(ln, Router)
+	http.ServeTLS(ln, Router, certFile, keyFile)
 }
 
-func DeleteWSRules(i string) {
+func DeleteWSSRules(i string) {
 	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.WS[i]; ok {
-		Setting.Listener.WS[i].Close()
-		delete(Setting.Listener.WS, i)
+	if _, ok := Setting.Listener.WSS[i]; ok {
+		Setting.Listener.WSS[i].Close()
+		delete(Setting.Listener.WSS, i)
 	}
 	Setting.Listener.Turn.Unlock()
 
@@ -74,10 +61,10 @@ func DeleteWSRules(i string) {
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
 
-	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket)", r.Listen, " => ", ParseForward(r))
+	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket TLS)", r.Listen, " => ", ParseForward(r))
 }
 
-func WS_Handle(i string, ws *websocket.Conn) {
+func WSS_Handle(i string, ws *websocket.Conn) {
 	ws.PayloadType = websocket.BinaryFrame
 	Setting.Rules.RLock()
 	r := Setting.Config.Rules[i]

@@ -20,16 +20,18 @@ func LoadTCPRules(i string) {
 
 	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
+
 	if err == nil {
+		Setting.Listener.Turn.Lock()
+		Setting.Listener.TCP[i] = ln
+		Setting.Listener.Turn.Unlock()
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (TCP)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (TCP) Error: ", err)
 		SendListenError(i)
 		return
 	}
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.TCP[i] = ln
-	Setting.Listener.Turn.Unlock()
+
 	for {
 		conn, err := ln.Accept()
 
@@ -56,6 +58,7 @@ func DeleteTCPRules(i string) {
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (TCP)", r.Listen, " => ", ParseForward(r))
 }
 

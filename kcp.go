@@ -20,16 +20,18 @@ func LoadKCPRules(i string) {
 	Setting.Rules.RUnlock()
 
 	ln, err := kcp.ListenWithOptions(":"+r.Listen, nil, 10, 3)
+
 	if err == nil {
+		Setting.Listener.Turn.Lock()
+		Setting.Listener.KCP[i] = ln
+		Setting.Listener.Turn.Unlock()
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (KCP)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (KCP) Error: ", err)
 		SendListenError(i)
 		return
 	}
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.KCP[i] = ln
-	Setting.Listener.Turn.Unlock()
+
 	for {
 		conn, err := ln.Accept()
 
@@ -56,6 +58,7 @@ func DeleteKCPRules(i string) {
 	r := Setting.Config.Rules[i]
 	delete(Setting.Config.Rules, i)
 	Setting.Rules.Unlock()
+
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (KCP)", r.Listen, " => ", ParseForward(r))
 }
 
