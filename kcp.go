@@ -8,23 +8,15 @@ import (
 	kcp "github.com/xtaci/kcp-go"
 )
 
-func LoadKCPRules(i string) {
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.KCP[i]; ok {
+func LoadKCPRules(i string, r Rule) {
+	if _, ok := Setting.Listener.Load(i); ok {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
-
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
 
 	ln, err := kcp.ListenWithOptions(":"+r.Listen, nil, 10, 3)
 
 	if err == nil {
-		Setting.Listener.Turn.Lock()
-		Setting.Listener.KCP[i] = ln
-		Setting.Listener.Turn.Unlock()
+		Setting.Listener.Store(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (KCP)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (KCP) Error: ", err)
@@ -46,24 +38,15 @@ func LoadKCPRules(i string) {
 	}
 }
 
-func DeleteKCPRules(i string) {
-	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.KCP[i]; ok {
-		Setting.Listener.KCP[i].Close()
-		delete(Setting.Listener.KCP, i)
+func DeleteKCPRules(i string, r Rule) {
+	if ln, ok := Setting.Listener.LoadAndDelete(i); ok {
+		ln.(*kcp.Listener).Close()
 	}
-	Setting.Listener.Turn.Unlock()
-
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
 
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (KCP)", r.Listen, " => ", ParseForward(r))
 }
 
 func kcp_handleRequest(conn net.Conn, index string) {
-
 	Setting.Rules.RLock()
 	r := Setting.Config.Rules[index]
 	Setting.Rules.RUnlock()

@@ -72,24 +72,16 @@ func (this *UDPDistribute) SetWriteDeadline(t time.Time) error {
 	return this.Conn.SetWriteDeadline(t)
 }
 
-func LoadUDPRules(i string) {
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.UDP[i]; ok {
+func LoadUDPRules(i string, r Rule) {
+	if _, ok := Setting.Listener.Load(i); ok {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
-
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
 
 	address, _ := net.ResolveUDPAddr("udp", ":"+r.Listen)
 	ln, err := net.ListenUDP("udp", address)
 
 	if err == nil {
-		Setting.Listener.Turn.Lock()
-		Setting.Listener.UDP[i] = ln
-		Setting.Listener.Turn.Unlock()
+		Setting.Listener.Store(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (UDP) Error: ", err)
@@ -100,18 +92,10 @@ func LoadUDPRules(i string) {
 	AcceptUDP(ln, i)
 }
 
-func DeleteUDPRules(i string) {
-	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.UDP[i]; ok {
-		Setting.Listener.UDP[i].Close()
-		delete(Setting.Listener.UDP, i)
+func DeleteUDPRules(i string, r Rule) {
+	if ln, ok := Setting.Listener.LoadAndDelete(i); ok {
+		ln.(*net.UDPConn).Close()
 	}
-	Setting.Listener.Turn.Unlock()
-
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
 
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 }

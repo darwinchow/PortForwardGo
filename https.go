@@ -29,52 +29,36 @@ func HttpsInit(port string) {
 	}
 }
 
-func LoadHttpsRules(i string) {
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
-
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.HTTPS[strings.ToLower(r.Listen)]; ok {
+func LoadHttpsRules(i string, r Rule) {
+	if _, ok := VHost.HTTPS.Load(strings.ToLower(r.Listen)); ok {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
-
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.HTTPS[strings.ToLower(r.Listen)] = i
-	Setting.Listener.Turn.Unlock()
+	VHost.HTTPS.Store(strings.ToLower(r.Listen), i)
 
 	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
 }
 
-func DeleteHttpsRules(i string) {
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
-
-	Setting.Listener.Turn.Lock()
-	delete(Setting.Listener.HTTPS, strings.ToLower(r.Listen))
-	Setting.Listener.Turn.Unlock()
-
+func DeleteHttpsRules(i string, r Rule) {
+	VHost.HTTPS.Delete(strings.ToLower(r.Listen))
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
 }
 
 func https_handle(conn net.Conn) {
 	firstByte := make([]byte, 1)
-	_, error := conn.Read(firstByte)
-	if error != nil {
+	_, err := conn.Read(firstByte)
+	if err != nil {
 		conn.Close()
 		return
 	}
+
 	if firstByte[0] != 0x16 {
 		conn.Close()
 		return
 	}
 
 	versionBytes := make([]byte, 2)
-	_, error = conn.Read(versionBytes)
-	if error != nil {
+	_, err = conn.Read(versionBytes)
+	if err != nil {
 		conn.Close()
 		return
 	}
@@ -84,16 +68,16 @@ func https_handle(conn net.Conn) {
 	}
 
 	restLengthBytes := make([]byte, 2)
-	_, error = conn.Read(restLengthBytes)
-	if error != nil {
+	_, err = conn.Read(restLengthBytes)
+	if err != nil {
 		conn.Close()
 		return
 	}
 	restLength := (int(restLengthBytes[0]) << 8) + int(restLengthBytes[1])
 
 	rest := make([]byte, restLength)
-	_, error = conn.Read(rest)
-	if error != nil {
+	_, err = conn.Read(rest)
+	if err != nil {
 		conn.Close()
 		return
 	}
@@ -162,7 +146,8 @@ func https_handle(conn net.Conn) {
 		return
 	}
 
-	i, ok := Setting.Listener.HTTPS[hostname]
+	value, _ := VHost.HTTPS.Load(hostname)
+	i, ok := value.(string)
 	if !ok {
 		conn.Close()
 		return

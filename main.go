@@ -30,7 +30,8 @@ import (
 	kcp "github.com/xtaci/kcp-go"
 )
 
-var Setting CSafeRule
+var Setting FullConfig
+var VHost Host
 var version string
 
 var ConfigFile string
@@ -38,24 +39,25 @@ var LogFile string
 var certFile string
 var keyFile string
 
-type CSafeRule struct {
-	Listener Listener
+type FullConfig struct {
+	Listener sync.Map
 	Config   Config
 	Rules    sync.RWMutex
 	Users    sync.Mutex
 }
 
 type Listener struct {
-	Turn  sync.RWMutex
-	TCP   map[string]*net.TCPListener
-	UDP   map[string]*net.UDPConn
-	KCP   map[string]*kcp.Listener
-	HTTP  map[string]string
-	HTTPS map[string]string
-	WS    map[string]*net.TCPListener
-	WSC   map[string]*net.TCPListener
-	WSS   map[string]*net.TCPListener
-	WSSC  map[string]*net.TCPListener
+	TCP  sync.Map
+	UDP  sync.Map
+	KCP  sync.Map
+	WS   sync.Map
+	WSC  sync.Map
+	WSS  sync.Map
+	WSSC sync.Map
+}
+type Host struct {
+	HTTP  sync.Map
+	HTTPS sync.Map
 }
 
 type Config struct {
@@ -109,18 +111,6 @@ func main() {
 			flag.PrintDefaults()
 			os.Exit(0)
 		}
-	}
-
-	{
-		Setting.Listener.TCP = make(map[string]*net.TCPListener)
-		Setting.Listener.UDP = make(map[string]*net.UDPConn)
-		Setting.Listener.KCP = make(map[string]*kcp.Listener)
-		Setting.Listener.HTTP = make(map[string]string)
-		Setting.Listener.HTTPS = make(map[string]string)
-		Setting.Listener.WS = make(map[string]*net.TCPListener)
-		Setting.Listener.WSC = make(map[string]*net.TCPListener)
-		Setting.Listener.WSS = make(map[string]*net.TCPListener)
-		Setting.Listener.WSSC = make(map[string]*net.TCPListener)
 	}
 
 	if LogFile != "" {
@@ -235,13 +225,13 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 		Setting.Users.Unlock()
 
 		Setting.Rules.Lock()
-		for index, _ := range NewConfig.Rules {
-			if NewConfig.Rules[index].Status == "Deleted" {
-				DeleteRules(index)
+		for index, value := range NewConfig.Rules {
+			if value.Status == "Deleted" {
+				DeleteRules(index, value)
 				continue
-			} else if NewConfig.Rules[index].Status == "Created" {
-				Setting.Config.Rules[index] = NewConfig.Rules[index]
-				LoadNewRules(index)
+			} else if value.Status == "Created" {
+				Setting.Config.Rules[index] = value
+				LoadNewRules(index, value)
 				continue
 			} else {
 				Setting.Config.Rules[index] = NewConfig.Rules[index]
@@ -270,83 +260,70 @@ func LoadListen() {
 		}
 	}
 }
+
 func CloseAllListener() {
-	Setting.Listener.Turn.Lock()
-	for _, ln := range Setting.Listener.TCP {
-		ln.Close()
+	Close := func(key interface{}, value interface{}) bool {
+		if ln, ok := value.(*net.TCPListener); ok {
+			ln.Close()
+		}
+		if ln, ok := value.(*net.UDPConn); ok {
+			ln.Close()
+		}
+		if ln, ok := value.(*kcp.Listener); ok {
+			ln.Close()
+		}
+		return true
 	}
-	for _, ln := range Setting.Listener.UDP {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.KCP {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.WS {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.WSC {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.WSS {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.WSSC {
-		ln.Close()
-	}
-	Setting.Listener.Turn.Unlock()
+
+	Setting.Listener.Range(Close)
 }
 
-func LoadNewRules(i string) {
-	Protocol := Setting.Config.Rules[i].Protocol
-
-	switch Protocol {
+func LoadNewRules(i string, r Rule) {
+	switch r.Protocol {
 	case "tcp":
-		go LoadTCPRules(i)
+		go LoadTCPRules(i, r)
 	case "udp":
-		go LoadUDPRules(i)
+		go LoadUDPRules(i, r)
 	case "kcp":
-		go LoadKCPRules(i)
+		go LoadKCPRules(i, r)
 	case "http":
-		go LoadHttpRules(i)
+		go LoadHttpRules(i, r)
 	case "https":
-		go LoadHttpsRules(i)
+		go LoadHttpsRules(i, r)
 	case "ws":
-		go LoadWSRules(i)
+		go LoadWSRules(i, r)
 	case "wsc":
-		go LoadWSCRules(i)
+		go LoadWSCRules(i, r)
 	case "wss":
-		go LoadWSSRules(i)
+		go LoadWSSRules(i, r)
 	case "wssc":
-		go LoadWSSCRules(i)
+		go LoadWSSCRules(i, r)
 	}
 }
 
-func DeleteRules(i string) {
-	if _, ok := Setting.Config.Rules[i]; !ok {
-		return
+func DeleteRules(i string, r Rule) {
+	switch r.Protocol {
+	case "tcp":
+		go DeleteTCPRules(i, r)
+	case "udp":
+		go DeleteUDPRules(i, r)
+	case "kcp":
+		go DeleteKCPRules(i, r)
+	case "http":
+		go DeleteHttpRules(i, r)
+	case "https":
+		go DeleteHttpsRules(i, r)
+	case "ws":
+		go DeleteWSRules(i, r)
+	case "wsc":
+		go DeleteWSCRules(i, r)
+	case "wss":
+		go DeleteWSSRules(i, r)
+	case "wssc":
+		go DeleteWSSCRules(i, r)
 	}
 
-	Protocol := Setting.Config.Rules[i].Protocol
-	switch Protocol {
-	case "tcp":
-		go DeleteTCPRules(i)
-	case "udp":
-		go DeleteUDPRules(i)
-	case "kcp":
-		go DeleteKCPRules(i)
-	case "http":
-		go DeleteHttpRules(i)
-	case "https":
-		go DeleteHttpsRules(i)
-	case "ws":
-		go DeleteWSRules(i)
-	case "wsc":
-		go DeleteWSCRules(i)
-	case "wss":
-		go DeleteWSSRules(i)
-	case "wssc":
-		go DeleteWSSCRules(i)
-	}
+	delete(Setting.Config.Rules, i)
 }
 
 func getConfig() {
@@ -377,8 +354,8 @@ func getConfig() {
 	zlog.Info("Update Cycle: ", Setting.Config.UpdateInfoCycle, " seconds")
 	LoadListen()
 
-	for index, _ := range NewConfig.Rules {
-		LoadNewRules(index)
+	for index, value := range NewConfig.Rules {
+		LoadNewRules(index, value)
 	}
 }
 
@@ -423,12 +400,12 @@ func updateConfig() {
 	Setting.Rules.Unlock()
 	Setting.Users.Unlock()
 
-	for index, rule := range Setting.Config.Rules {
+	for index, rule := range NewConfig.Rules {
 		if rule.Status == "Deleted" {
-			DeleteRules(index)
+			DeleteRules(index, rule)
 			continue
 		} else if rule.Status == "Created" {
-			LoadNewRules(index)
+			LoadNewRules(index, rule)
 			continue
 		}
 	}

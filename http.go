@@ -30,34 +30,17 @@ func HttpInit(port string) {
 	}
 }
 
-func LoadHttpRules(i string) {
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
-
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.HTTP[strings.ToLower(r.Listen)]; ok {
+func LoadHttpRules(i string, r Rule) {
+	if _, ok := VHost.HTTP.Load(strings.ToLower(r.Listen)); ok {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
 
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.HTTP[strings.ToLower(r.Listen)] = i
-	Setting.Listener.Turn.Unlock()
-
+	VHost.HTTP.Store(strings.ToLower(r.Listen), i)
 	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
-func DeleteHttpRules(i string) {
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
-
-	Setting.Listener.Turn.Lock()
-	delete(Setting.Listener.HTTP, strings.ToLower(r.Listen))
-	Setting.Listener.Turn.Unlock()
-
+func DeleteHttpRules(i string, r Rule) {
+	VHost.HTTP.Delete(strings.ToLower(r.Listen))
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
@@ -95,7 +78,8 @@ func http_handle(conn net.Conn) {
 		return
 	}
 
-	i, ok := Setting.Listener.HTTP[hostname]
+	value, _ := VHost.HTTP.Load(hostname)
+	i, ok := value.(string)
 	if !ok {
 		conn.Write([]byte(HttpStatus(503)))
 		conn.Write([]byte("\n"))

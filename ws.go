@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
 	"io"
 	"net"
 	"net/http"
+
+	"github.com/CoiaPrant/zlog"
 
 	proxyprotocol "github.com/pires/go-proxyproto"
 	"golang.org/x/net/websocket"
@@ -23,23 +24,15 @@ func (this *Addr) String() string {
 	return this.NetworkString
 }
 
-func LoadWSRules(i string) {
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.WS[i]; ok {
+func LoadWSRules(i string, r Rule) {
+	if _, ok := Setting.Listener.Load(i); ok {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
-
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
 
 	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
-		Setting.Listener.Turn.Lock()
-		Setting.Listener.WS[i] = ln
-		Setting.Listener.Turn.Unlock()
+		Setting.Listener.Store(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (Websocket) Error: ", err)
@@ -61,18 +54,10 @@ func LoadWSRules(i string) {
 	http.Serve(ln, Router)
 }
 
-func DeleteWSRules(i string) {
-	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.WS[i]; ok {
-		Setting.Listener.WS[i].Close()
-		delete(Setting.Listener.WS, i)
+func DeleteWSRules(i string, r Rule) {
+	if ln, ok := Setting.Listener.LoadAndDelete(i); ok {
+		ln.(*net.TCPListener).Close()
 	}
-	Setting.Listener.Turn.Unlock()
-
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
 
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket)", r.Listen, " => ", ParseForward(r))
 }

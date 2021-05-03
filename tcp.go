@@ -1,30 +1,24 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
 	"net"
+
+	"github.com/CoiaPrant/zlog"
 
 	proxyprotocol "github.com/pires/go-proxyproto"
 )
 
-func LoadTCPRules(i string) {
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.TCP[i]; ok {
+func LoadTCPRules(i string, r Rule) {
+
+	if _, ok := Setting.Listener.Load(i); ok {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
-
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
 
 	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 
 	if err == nil {
-		Setting.Listener.Turn.Lock()
-		Setting.Listener.TCP[i] = ln
-		Setting.Listener.Turn.Unlock()
+		Setting.Listener.Store(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (TCP)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (TCP) Error: ", err)
@@ -46,18 +40,10 @@ func LoadTCPRules(i string) {
 	}
 }
 
-func DeleteTCPRules(i string) {
-	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.TCP[i]; ok {
-		Setting.Listener.TCP[i].Close()
-		delete(Setting.Listener.TCP, i)
+func DeleteTCPRules(i string, r Rule) {
+	if ln, ok := Setting.Listener.LoadAndDelete(i); ok {
+		ln.(*net.TCPListener).Close()
 	}
-	Setting.Listener.Turn.Unlock()
-
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
 
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (TCP)", r.Listen, " => ", ParseForward(r))
 }
