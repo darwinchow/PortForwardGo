@@ -57,6 +57,7 @@ func wssc_handleRequest(conn net.Conn, index string) {
 	}
 
 	ws_config, err := websocket.NewConfig("wss://"+ParseForward(r)+"/ws/", "https://"+ParseForward(r)+"/ws/")
+	ws_config.TlsConfig.InsecureSkipVerify = true
 	if err != nil {
 		conn.Close()
 		return
