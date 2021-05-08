@@ -1,8 +1,10 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
+	"crypto/tls"
 	"net"
+
+	"github.com/CoiaPrant/zlog"
 
 	"golang.org/x/net/websocket"
 )
@@ -57,7 +59,7 @@ func wssc_handleRequest(conn net.Conn, index string) {
 	}
 
 	ws_config, err := websocket.NewConfig("wss://"+ParseForward(r)+"/ws/", "https://"+ParseForward(r)+"/ws/")
-	ws_config.TlsConfig.InsecureSkipVerify = true
+	ws_config.TlsConfig = &tls.Config{InsecureSkipVerify: true}
 	if err != nil {
 		conn.Close()
 		return
