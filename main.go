@@ -138,12 +138,14 @@ func main() {
 
 	api_conf, err := ioutil.ReadFile(ConfigFile)
 	if err != nil {
-		zlog.Fatal("Cannot read the config file. (io Error) " + err.Error())
+		zlog.Fatal("Unable to get local configuration file. (i/o Error) " + err.Error())
+		return
 	}
 
 	err = json.Unmarshal(api_conf, &API)
 	if err != nil {
-		zlog.Fatal("Cannot read the config file. (Parse Error) " + err.Error())
+		zlog.Fatal("Unable to get local configuration file. (Parse Error) " + err.Error())
+		return
 	}
 
 	zlog.Info("API URL: ", API.APIAddr)
