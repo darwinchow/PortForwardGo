@@ -30,8 +30,9 @@ import (
 	kcp "github.com/xtaci/kcp-go"
 )
 
+var API APIConfig
 var Setting FullConfig
-var VHost Host
+var Shared SharePort
 var version string
 
 var ConfigFile string
@@ -55,9 +56,12 @@ type Listener struct {
 	WSS  sync.Map
 	WSSC sync.Map
 }
-type Host struct {
+
+type SharePort struct {
 	HTTP  sync.Map
 	HTTPS sync.Map
+	DNS   sync.Map
+	ICMP  sync.Map
 }
 
 type Config struct {
@@ -96,8 +100,6 @@ type APIConfig struct {
 	NodeID   int
 }
 
-var apic APIConfig
-
 func main() {
 	{
 		flag.StringVar(&ConfigFile, "config", "config.json", "The config file location")
@@ -134,29 +136,29 @@ func main() {
 
 	zlog.Info("Node Version: ", version)
 
-	apif, err := ioutil.ReadFile(ConfigFile)
+	api_conf, err := ioutil.ReadFile(ConfigFile)
 	if err != nil {
 		zlog.Fatal("Cannot read the config file. (io Error) " + err.Error())
 	}
 
-	err = json.Unmarshal(apif, &apic)
+	err = json.Unmarshal(api_conf, &API)
 	if err != nil {
 		zlog.Fatal("Cannot read the config file. (Parse Error) " + err.Error())
 	}
 
-	zlog.Info("API URL: ", apic.APIAddr)
+	zlog.Info("API URL: ", API.APIAddr)
 	getConfig()
 
 	go func() {
 		if Setting.Config.EnableAPI == true {
-			zlog.Info("[HTTP API] Listening ", Setting.Config.APIPort, " Path: /", md5_encode(apic.APIToken), " Method:POST")
+			zlog.Info("[HTTP API] Listening ", Setting.Config.APIPort, " Path: /", md5_encode(API.APIToken), " Method:POST")
 			route := http.NewServeMux()
 			route.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(404)
 				io.WriteString(w, Page404)
 				return
 			})
-			route.HandleFunc("/"+md5_encode(apic.APIToken), NewAPIConnect)
+			route.HandleFunc("/"+md5_encode(API.APIToken), NewAPIConnect)
 			err := http.ListenAndServe(":"+Setting.Config.APIPort, route)
 			if err != nil {
 				zlog.Error("[HTTP API] ", err)
@@ -328,28 +330,35 @@ func DeleteRules(i string, r Rule) {
 
 func getConfig() {
 	var NewConfig Config
-	jsonData, _ := json.Marshal(map[string]interface{}{
+	jsonData, err := json.Marshal(map[string]interface{}{
 		"Action":  "GetConfig",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
 		"Version": version,
 	})
-	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+
+	if err != nil {
+		zlog.Fatal("Error submitting information. (Parse Error): " + err.Error())
+		return
+	}
+
+	status, data, err := sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	if status == 503 {
-		zlog.Fatal("The remote server returned an error message: ", string(confF))
+		zlog.Fatal("The remote server returned an error message: ", string(data))
 		return
 	}
 
 	if err != nil {
-		zlog.Fatal("Cannot read the online config file. (NetWork Error) " + err.Error())
+		zlog.Fatal("Unable to get configuration file. (NetWork Error): " + err.Error())
 		return
 	}
 
-	err = json.Unmarshal(confF, &NewConfig)
+	err = json.Unmarshal(data, &NewConfig)
 	if err != nil {
-		zlog.Fatal("Cannot read the port forward config file. (Parse Error) " + err.Error())
+		zlog.Fatal("Unable to get configuration file. (Parse Error): " + err.Error())
 		return
 	}
+
 	Setting.Config = NewConfig
 	zlog.Info("Update Cycle: ", Setting.Config.UpdateInfoCycle, " seconds")
 	LoadListen()
@@ -368,20 +377,27 @@ func updateConfig() {
 	NowConfig := Setting.Config
 	Setting.Rules.RUnlock()
 
-	jsonData, _ := json.Marshal(map[string]interface{}{
+	jsonData, err := json.Marshal(map[string]interface{}{
 		"Action":  "UpdateInfo",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
 		"Info":    &NowConfig,
 		"Version": version,
 	})
 
-	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	if err != nil {
+		Setting.Users.Unlock()
+		zlog.Error("Error submitting information. (Parse Error): " + err.Error())
+		return
+	}
+
+	status, confF, err := sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	if status == 503 {
 		Setting.Users.Unlock()
 		zlog.Error("Scheduled task update error,The remote server returned an error message: ", string(confF))
 		return
 	}
+
 	if err != nil {
 		Setting.Users.Unlock()
 		zlog.Error("Scheduled task update error: ", err)
@@ -419,14 +435,20 @@ func saveConfig() {
 	Setting.Rules.Lock()
 	Setting.Users.Lock()
 
-	jsonData, _ := json.Marshal(map[string]interface{}{
+	jsonData, err := json.Marshal(map[string]interface{}{
 		"Action":  "SaveConfig",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
 		"Info":    &Setting.Config,
 		"Version": version,
 	})
-	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+
+	if err != nil {
+		zlog.Error("Error submitting information. (Parse Error): " + err.Error())
+		return
+	}
+
+	status, confF, err := sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	if status == 503 {
 		zlog.Error("Save config error,The remote server returned an error message , message: ", string(confF))
 		return
@@ -440,14 +462,16 @@ func saveConfig() {
 }
 
 func SendListenError(i string) {
-	jsonData, _ := json.Marshal(map[string]interface{}{
+	jsonData, err := json.Marshal(map[string]interface{}{
 		"Action":  "Error",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
 		"Version": version,
 		"RuleID":  i,
 	})
-	sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	if err == nil {
+		sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	}
 }
 
 func sendRequest(url string, body io.Reader, addHeaders map[string]string, method string) (statuscode int, resp []byte, err error) {
@@ -528,14 +552,6 @@ func limitWrite(dest net.Conn, userid string, buf []byte) {
 	}()
 }
 
-func ParseForward(r Rule) string {
-	if strings.Count(r.RemoteHost, ":") == 1 {
-		return "[" + r.RemoteHost + "]:" + strconv.Itoa(r.RemotePort)
-	}
-
-	return r.RemoteHost + ":" + strconv.Itoa(r.RemotePort)
-}
-
 func CreateTLSFile(certFile, keyFile string) {
 	var ip string
 	os.Remove(certFile)
@@ -580,4 +596,12 @@ func CreateTLSFile(certFile, keyFile string) {
 	keyOut.Close()
 	zlog.Success("Created the ssl certfile,location: ", certFile)
 	zlog.Success("Created the ssl keyfile,location: ", keyFile)
+}
+
+func ParseForward(r Rule) string {
+	if strings.Count(r.RemoteHost, ":") == 1 {
+		return "[" + r.RemoteHost + "]:" + strconv.Itoa(r.RemotePort)
+	}
+
+	return r.RemoteHost + ":" + strconv.Itoa(r.RemotePort)
 }

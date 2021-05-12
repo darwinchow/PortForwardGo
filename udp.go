@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-type UDPDistribute struct {
+type UDPConn struct {
 	Connected bool
 	Conn      *(net.UDPConn)
 	Cache     chan []byte
@@ -15,8 +15,8 @@ type UDPDistribute struct {
 	LAddr     net.Addr
 }
 
-func NewUDPDistribute(conn *(net.UDPConn), addr net.Addr) *UDPDistribute {
-	return &UDPDistribute{
+func NewUDPConn(conn *(net.UDPConn), addr net.Addr) *UDPConn {
+	return &UDPConn{
 		Connected: true,
 		Conn:      conn,
 		Cache:     make(chan []byte, 16),
@@ -25,12 +25,12 @@ func NewUDPDistribute(conn *(net.UDPConn), addr net.Addr) *UDPDistribute {
 	}
 }
 
-func (this *UDPDistribute) Close() error {
+func (this *UDPConn) Close() error {
 	this.Connected = false
 	return nil
 }
 
-func (this *UDPDistribute) Read(b []byte) (n int, err error) {
+func (this *UDPConn) Read(b []byte) (n int, err error) {
 	if !this.Connected {
 		return 0, errors.New("udp conn has closed")
 	}
@@ -45,30 +45,30 @@ func (this *UDPDistribute) Read(b []byte) (n int, err error) {
 	}
 }
 
-func (this *UDPDistribute) Write(b []byte) (int, error) {
+func (this *UDPConn) Write(b []byte) (int, error) {
 	if !this.Connected {
 		return 0, errors.New("udp conn has closed")
 	}
 	return this.Conn.WriteTo(b, this.RAddr)
 }
 
-func (this *UDPDistribute) RemoteAddr() net.Addr {
+func (this *UDPConn) RemoteAddr() net.Addr {
 	return this.RAddr
 }
 
-func (this *UDPDistribute) LocalAddr() net.Addr {
+func (this *UDPConn) LocalAddr() net.Addr {
 	return this.LAddr
 }
 
-func (this *UDPDistribute) SetDeadline(t time.Time) error {
+func (this *UDPConn) SetDeadline(t time.Time) error {
 	return this.Conn.SetDeadline(t)
 }
 
-func (this *UDPDistribute) SetReadDeadline(t time.Time) error {
+func (this *UDPConn) SetReadDeadline(t time.Time) error {
 	return this.Conn.SetReadDeadline(t)
 }
 
-func (this *UDPDistribute) SetWriteDeadline(t time.Time) error {
+func (this *UDPConn) SetWriteDeadline(t time.Time) error {
 	return this.Conn.SetWriteDeadline(t)
 }
 
@@ -77,7 +77,13 @@ func LoadUDPRules(i string, r Rule) {
 		return
 	}
 
-	address, _ := net.ResolveUDPAddr("udp", ":"+r.Listen)
+	address, err := net.ResolveUDPAddr("udp", ":"+r.Listen)
+	if err != nil {
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (UDP) Error: ", err)
+		SendListenError(i)
+		return
+	}
+
 	ln, err := net.ListenUDP("udp", address)
 
 	if err == nil {
@@ -102,7 +108,7 @@ func DeleteUDPRules(i string, r Rule) {
 
 func AcceptUDP(serv *net.UDPConn, index string) {
 
-	table := make(map[string]*UDPDistribute)
+	table := make(map[string]*UDPConn)
 	for {
 		buf := make([]byte, 32*1024)
 
@@ -126,7 +132,7 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 				}
 			}
 
-			conn := NewUDPDistribute(serv, addr)
+			conn := NewUDPConn(serv, addr)
 			table[addr.String()] = conn
 			conn.Cache <- buf
 

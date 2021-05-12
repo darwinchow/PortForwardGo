@@ -14,7 +14,13 @@ func LoadWSSCRules(i string, r Rule) {
 		return
 	}
 
-	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
+	tcpaddress, err := net.ResolveTCPAddr("tcp", ":"+r.Listen)
+	if err != nil {
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS Client) Error: ", err)
+		SendListenError(i)
+		return
+	}
+
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 
 	if err == nil {

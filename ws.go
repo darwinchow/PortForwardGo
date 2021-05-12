@@ -29,13 +29,19 @@ func LoadWSRules(i string, r Rule) {
 		return
 	}
 
-	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
+	tcpaddress, err := net.ResolveTCPAddr("tcp", ":"+r.Listen)
+	if err != nil {
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket) Error: ", err)
+		SendListenError(i)
+		return
+	}
+
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
 		Setting.Listener.Store(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket)", r.Listen, " => ", ParseForward(r))
 	} else {
-		zlog.Error("Load failed [", r.UserID, "][", i, "] (Websocket) Error: ", err)
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket) Error: ", err)
 		SendListenError(i)
 		return
 	}

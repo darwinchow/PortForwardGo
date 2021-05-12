@@ -31,16 +31,16 @@ func HttpInit(port string) {
 }
 
 func LoadHttpRules(i string, r Rule) {
-	if _, ok := VHost.HTTP.Load(strings.ToLower(r.Listen)); ok {
+	if _, ok := Shared.HTTP.Load(strings.ToLower(r.Listen)); ok {
 		return
 	}
 
-	VHost.HTTP.Store(strings.ToLower(r.Listen), i)
+	Shared.HTTP.Store(strings.ToLower(r.Listen), i)
 	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
 func DeleteHttpRules(i string, r Rule) {
-	VHost.HTTP.Delete(strings.ToLower(r.Listen))
+	Shared.HTTP.Delete(strings.ToLower(r.Listen))
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
@@ -78,7 +78,7 @@ func http_handle(conn net.Conn) {
 		return
 	}
 
-	value, _ := VHost.HTTP.Load(hostname)
+	value, _ := Shared.HTTP.Load(hostname)
 	i, ok := value.(string)
 	if !ok {
 		conn.Write([]byte(HttpStatus(503)))

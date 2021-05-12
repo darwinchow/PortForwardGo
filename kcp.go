@@ -1,10 +1,9 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
 	"net"
 
-	proxyprotocol "github.com/pires/go-proxyproto"
+	"github.com/CoiaPrant/zlog"
 	kcp "github.com/xtaci/kcp-go"
 )
 
@@ -60,13 +59,6 @@ func kcp_handleRequest(conn net.Conn, index string) {
 	if err != nil {
 		conn.Close()
 		return
-	}
-
-	if r.ProxyProtocolVersion != 0 {
-		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr()).Format()
-		if err == nil {
-			limitWrite(proxy, r.UserID, header)
-		}
 	}
 
 	go copyIO(conn, proxy, r)
