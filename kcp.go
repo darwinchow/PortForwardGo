@@ -8,14 +8,14 @@ import (
 )
 
 func LoadKCPRules(i string, r Rule) {
-	if _, ok := Setting.Listener.Load(i); ok {
+	if  Setting.Listener.Has(i) {
 		return
 	}
 
 	ln, err := kcp.ListenWithOptions(":"+r.Listen, nil, 10, 3)
 
 	if err == nil {
-		Setting.Listener.Store(i, ln)
+		Setting.Listener.Set(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (KCP)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (KCP) Error: ", err)
@@ -38,7 +38,8 @@ func LoadKCPRules(i string, r Rule) {
 }
 
 func DeleteKCPRules(i string, r Rule) {
-	if ln, ok := Setting.Listener.LoadAndDelete(i); ok {
+	if ln, ok := Setting.Listener.Get(i); ok {
+		Setting.Listener.Remove(i)
 		ln.(*kcp.Listener).Close()
 	}
 

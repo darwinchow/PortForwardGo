@@ -6,6 +6,7 @@ require (
 	gitee.com/kzquu/wego v0.0.0-20210125142742-9360edf6752a
 	github.com/CoiaPrant/zlog v1.0.0 // indirect
 	github.com/klauspost/reedsolomon v1.9.11 // indirect
+	github.com/orcaman/concurrent-map v0.0.0-20210501183033-44dafcb38ecc // indirect
 	github.com/pires/go-proxyproto v0.4.1
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/templexxx/cpufeat v0.0.0-20180724012125-cef66df7f161 // indirect

@@ -25,7 +25,7 @@ func (this *Addr) String() string {
 }
 
 func LoadWSRules(i string, r Rule) {
-	if _, ok := Setting.Listener.Load(i); ok {
+	if Setting.Listener.Has(i) {
 		return
 	}
 
@@ -38,7 +38,7 @@ func LoadWSRules(i string, r Rule) {
 
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
-		Setting.Listener.Store(i, ln)
+		Setting.Listener.Set(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket) Error: ", err)
@@ -61,7 +61,8 @@ func LoadWSRules(i string, r Rule) {
 }
 
 func DeleteWSRules(i string, r Rule) {
-	if ln, ok := Setting.Listener.LoadAndDelete(i); ok {
+	if ln, ok := Setting.Listener.Get(i); ok {
+		Setting.Listener.Remove(i)
 		ln.(*net.TCPListener).Close()
 	}
 

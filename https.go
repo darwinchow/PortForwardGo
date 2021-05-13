@@ -30,16 +30,16 @@ func HttpsInit(port string) {
 }
 
 func LoadHttpsRules(i string, r Rule) {
-	if _, ok := Shared.HTTPS.Load(strings.ToLower(r.Listen)); ok {
+	if Shared.HTTPS.Has(strings.ToLower(r.Listen)) {
 		return
 	}
-	Shared.HTTPS.Store(strings.ToLower(r.Listen), i)
+	Shared.HTTPS.Set(strings.ToLower(r.Listen), i)
 
 	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
 }
 
 func DeleteHttpsRules(i string, r Rule) {
-	Shared.HTTPS.Delete(strings.ToLower(r.Listen))
+	Shared.HTTPS.Remove(strings.ToLower(r.Listen))
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTPS)", r.Listen, " => ", ParseForward(r))
 }
 
@@ -146,7 +146,7 @@ func https_handle(conn net.Conn) {
 		return
 	}
 
-	value, _ := Shared.HTTPS.Load(hostname)
+	value, _ := Shared.HTTPS.Get(hostname)
 	i, ok := value.(string)
 	if !ok {
 		conn.Close()

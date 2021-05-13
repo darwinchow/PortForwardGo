@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"gitee.com/kzquu/wego/util/ratelimit"
+	cmap "github.com/orcaman/concurrent-map"
 	kcp "github.com/xtaci/kcp-go"
 )
 
@@ -41,27 +42,15 @@ var certFile string
 var keyFile string
 
 type FullConfig struct {
-	Listener sync.Map
+	Listener cmap.ConcurrentMap
 	Config   Config
 	Rules    sync.RWMutex
 	Users    sync.Mutex
 }
 
-type Listener struct {
-	TCP  sync.Map
-	UDP  sync.Map
-	KCP  sync.Map
-	WS   sync.Map
-	WSC  sync.Map
-	WSS  sync.Map
-	WSSC sync.Map
-}
-
 type SharePort struct {
-	HTTP  sync.Map
-	HTTPS sync.Map
-	DNS   sync.Map
-	ICMP  sync.Map
+	HTTP  cmap.ConcurrentMap
+	HTTPS cmap.ConcurrentMap
 }
 
 type Config struct {
@@ -102,6 +91,12 @@ type APIConfig struct {
 
 func main() {
 	{
+		Setting.Listener = cmap.New()
+		Shared.HTTP = cmap.New()
+		Shared.HTTPS = cmap.New()
+	}
+
+	{
 		flag.StringVar(&ConfigFile, "config", "config.json", "The config file location")
 		flag.StringVar(&certFile, "certfile", "public.pem", "The ssl cert file location")
 		flag.StringVar(&keyFile, "keyfile", "private.key.", "The ssl key file location")
@@ -113,6 +108,12 @@ func main() {
 			flag.PrintDefaults()
 			os.Exit(0)
 		}
+	}
+
+	{
+		Setting.Listener = cmap.New()
+		Shared.HTTP = cmap.New()
+		Shared.HTTPS = cmap.New()
 	}
 
 	if LogFile != "" {
@@ -266,20 +267,17 @@ func LoadListen() {
 }
 
 func CloseAllListener() {
-	Close := func(key interface{}, value interface{}) bool {
-		if ln, ok := value.(*net.TCPListener); ok {
+	for item := range Setting.Listener.IterBuffered() {
+		if ln, ok := item.Val.(*net.TCPListener); ok {
 			ln.Close()
 		}
-		if ln, ok := value.(*net.UDPConn); ok {
+		if ln, ok := item.Val.(*net.UDPConn); ok {
 			ln.Close()
 		}
-		if ln, ok := value.(*kcp.Listener); ok {
+		if ln, ok := item.Val.(*kcp.Listener); ok {
 			ln.Close()
 		}
-		return true
 	}
-
-	Setting.Listener.Range(Close)
 }
 
 func LoadNewRules(i string, r Rule) {
@@ -383,7 +381,7 @@ func updateConfig() {
 		"Action":  "UpdateInfo",
 		"NodeID":  API.NodeID,
 		"Token":   md5_encode(API.APIToken),
-		"Info":    &NowConfig,
+		"Info":    NowConfig,
 		"Version": version,
 	})
 
@@ -402,7 +400,7 @@ func updateConfig() {
 
 	if err != nil {
 		Setting.Users.Unlock()
-		zlog.Error("Scheduled task update error: ", err)
+		zlog.Error("Scheduled task update network error: ", err)
 		return
 	}
 
@@ -441,7 +439,7 @@ func saveConfig() {
 		"Action":  "SaveConfig",
 		"NodeID":  API.NodeID,
 		"Token":   md5_encode(API.APIToken),
-		"Info":    &Setting.Config,
+		"Info":    Setting.Config,
 		"Version": version,
 	})
 
@@ -450,9 +448,9 @@ func saveConfig() {
 		return
 	}
 
-	status, confF, err := sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	status, data, err := sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	if status == 503 {
-		zlog.Error("Save config error,The remote server returned an error message , message: ", string(confF))
+		zlog.Error("Save config error,The remote server returned an error message: ", string(data))
 		return
 	}
 	if err != nil {
@@ -471,6 +469,7 @@ func SendListenError(i string) {
 		"Version": version,
 		"RuleID":  i,
 	})
+
 	if err == nil {
 		sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
 	}

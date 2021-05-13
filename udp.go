@@ -73,7 +73,7 @@ func (this *UDPConn) SetWriteDeadline(t time.Time) error {
 }
 
 func LoadUDPRules(i string, r Rule) {
-	if _, ok := Setting.Listener.Load(i); ok {
+	if Setting.Listener.Has(i) {
 		return
 	}
 
@@ -87,7 +87,7 @@ func LoadUDPRules(i string, r Rule) {
 	ln, err := net.ListenUDP("udp", address)
 
 	if err == nil {
-		Setting.Listener.Store(i, ln)
+		Setting.Listener.Set(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (UDP)", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (UDP) Error: ", err)
@@ -99,7 +99,8 @@ func LoadUDPRules(i string, r Rule) {
 }
 
 func DeleteUDPRules(i string, r Rule) {
-	if ln, ok := Setting.Listener.LoadAndDelete(i); ok {
+	if ln, ok := Setting.Listener.Get(i); ok {
+		Setting.Listener.Remove(i)
 		ln.(*net.UDPConn).Close()
 	}
 

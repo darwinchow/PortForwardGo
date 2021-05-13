@@ -10,7 +10,7 @@ import (
 )
 
 func LoadWSSCRules(i string, r Rule) {
-	if _, ok := Setting.Listener.Load(i); ok {
+	if Setting.Listener.Has(i) {
 		return
 	}
 
@@ -24,7 +24,7 @@ func LoadWSSCRules(i string, r Rule) {
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 
 	if err == nil {
-		Setting.Listener.Store(i, ln)
+		Setting.Listener.Set(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket TLS Client) ", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS Client) Error:", err)
@@ -47,7 +47,8 @@ func LoadWSSCRules(i string, r Rule) {
 }
 
 func DeleteWSSCRules(i string, r Rule) {
-	if ln, ok := Setting.Listener.LoadAndDelete(i); ok {
+	if ln, ok := Setting.Listener.Get(i); ok {
+		Setting.Listener.Remove(i)
 		ln.(*net.TCPListener).Close()
 	}
 
