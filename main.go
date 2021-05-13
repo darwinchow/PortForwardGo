@@ -89,6 +89,14 @@ type APIConfig struct {
 	NodeID   int
 }
 
+type POSTData struct {
+	Action  string `json:"Action"`
+	NodeID  int    `json:"NodeID"`
+	Token   string `json:"Token"`
+	Info    Config `json:"Info"`
+	Version string `json:"Version"`
+}
+
 func main() {
 	{
 		Setting.Listener = cmap.New()
@@ -330,11 +338,11 @@ func DeleteRules(i string, r Rule) {
 
 func getConfig() {
 	var NewConfig Config
-	jsonData, err := json.Marshal(map[string]interface{}{
-		"Action":  "GetConfig",
-		"NodeID":  API.NodeID,
-		"Token":   md5_encode(API.APIToken),
-		"Version": version,
+	jsonData, err := json.Marshal(&POSTData{
+		Action:  "GetConfig",
+		NodeID:  API.NodeID,
+		Token:   md5_encode(API.APIToken),
+		Version: version,
 	})
 
 	if err != nil {
@@ -377,12 +385,12 @@ func updateConfig() {
 	NowConfig := Setting.Config
 	Setting.Rules.RUnlock()
 
-	jsonData, err := json.Marshal(map[string]interface{}{
-		"Action":  "UpdateInfo",
-		"NodeID":  API.NodeID,
-		"Token":   md5_encode(API.APIToken),
-		"Info":    NowConfig,
-		"Version": version,
+	jsonData, err := json.Marshal(&POSTData{
+		Action:  "UpdateInfo",
+		NodeID:  API.NodeID,
+		Token:   md5_encode(API.APIToken),
+		Info:    NowConfig,
+		Version: version,
 	})
 
 	if err != nil {
@@ -435,12 +443,12 @@ func saveConfig() {
 	Setting.Rules.Lock()
 	Setting.Users.Lock()
 
-	jsonData, err := json.Marshal(map[string]interface{}{
-		"Action":  "SaveConfig",
-		"NodeID":  API.NodeID,
-		"Token":   md5_encode(API.APIToken),
-		"Info":    Setting.Config,
-		"Version": version,
+	jsonData, err := json.Marshal(&POSTData{
+		Action:  "SaveConfig",
+		NodeID:  API.NodeID,
+		Token:   md5_encode(API.APIToken),
+		Info:    Setting.Config,
+		Version: version,
 	})
 
 	if err != nil {
