@@ -89,14 +89,6 @@ type APIConfig struct {
 	NodeID   int
 }
 
-type POSTData struct {
-	Action  string `json:"Action"`
-	NodeID  int    `json:"NodeID"`
-	Token   string `json:"Token"`
-	Info    Config `json:"Info"`
-	Version string `json:"Version"`
-}
-
 func main() {
 	{
 		Setting.Listener = cmap.New()
@@ -338,11 +330,11 @@ func DeleteRules(i string, r Rule) {
 
 func getConfig() {
 	var NewConfig Config
-	jsonData, err := json.Marshal(&POSTData{
-		Action:  "GetConfig",
-		NodeID:  API.NodeID,
-		Token:   md5_encode(API.APIToken),
-		Version: version,
+	jsonData, err := json.Marshal(map[string]interface{}{
+		"Action":  "GetConfig",
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
+		"Version": version,
 	})
 
 	if err != nil {
@@ -350,7 +342,7 @@ func getConfig() {
 		return
 	}
 
-	status, data, err := sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	status, data, err := sendRequest(API.APIAddr, jsonData, nil, "POST")
 	if status == 503 {
 		zlog.Fatal("The remote server returned an error message: ", string(data))
 		return
@@ -385,12 +377,12 @@ func updateConfig() {
 	NowConfig := Setting.Config
 	Setting.Rules.RUnlock()
 
-	jsonData, err := json.Marshal(&POSTData{
-		Action:  "UpdateInfo",
-		NodeID:  API.NodeID,
-		Token:   md5_encode(API.APIToken),
-		Info:    NowConfig,
-		Version: version,
+	jsonData, err := json.Marshal(map[string]interface{}{
+		"Action":  "UpdateInfo",
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
+		"Info":    NowConfig,
+		"Version": version,
 	})
 
 	if err != nil {
@@ -399,7 +391,7 @@ func updateConfig() {
 		return
 	}
 
-	status, confF, err := sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	status, confF, err := sendRequest(API.APIAddr, jsonData, nil, "POST")
 	if status == 503 {
 		Setting.Users.Unlock()
 		zlog.Error("Scheduled task update error,The remote server returned an error message: ", string(confF))
@@ -443,12 +435,12 @@ func saveConfig() {
 	Setting.Rules.Lock()
 	Setting.Users.Lock()
 
-	jsonData, err := json.Marshal(&POSTData{
-		Action:  "SaveConfig",
-		NodeID:  API.NodeID,
-		Token:   md5_encode(API.APIToken),
-		Info:    Setting.Config,
-		Version: version,
+	jsonData, err := json.Marshal(map[string]interface{}{
+		"Action":  "UpdateInfo",
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
+		"Info":    Setting.Config,
+		"Version": version,
 	})
 
 	if err != nil {
@@ -456,7 +448,7 @@ func saveConfig() {
 		return
 	}
 
-	status, data, err := sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	status, data, err := sendRequest(API.APIAddr, jsonData, nil, "POST")
 	if status == 503 {
 		zlog.Error("Save config error,The remote server returned an error message: ", string(data))
 		return
@@ -479,14 +471,14 @@ func SendListenError(i string) {
 	})
 
 	if err == nil {
-		sendRequest(API.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+		sendRequest(API.APIAddr, jsonData, nil, "POST")
 	}
 }
 
-func sendRequest(url string, body io.Reader, addHeaders map[string]string, method string) (statuscode int, resp []byte, err error) {
-	req, err := http.NewRequest(method, url, body)
+func sendRequest(url string, data []byte, addHeaders map[string]string, method string) (int, []byte, error) {
+	req, err := http.NewRequest(method, url, bytes.NewReader(data))
 	if err != nil {
-		return
+		return 000, nil, err
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36")
@@ -500,13 +492,13 @@ func sendRequest(url string, body io.Reader, addHeaders map[string]string, metho
 	client := &http.Client{}
 	response, err := client.Do(req)
 	if err != nil {
-		return
+		return 000, nil, err
 	}
 	defer response.Body.Close()
 
-	statuscode = response.StatusCode
-	resp, err = ioutil.ReadAll(response.Body)
-	return
+	statuscode := response.StatusCode
+	resp, err := ioutil.ReadAll(response.Body)
+	return statuscode, resp, err
 }
 
 func md5_encode(s string) string {
