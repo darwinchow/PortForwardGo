@@ -78,7 +78,7 @@ func WSS_Handle(i string, ws *websocket.Conn) {
 			NetworkString: ws.Request().Header.Get("X-Forward-Address"),
 		}, proxy.LocalAddr()).Format()
 		if err == nil {
-			limitWrite(proxy, r.UserID, header)
+			limitWrite(proxy, r, header)
 		}
 	}
 

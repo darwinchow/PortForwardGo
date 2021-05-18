@@ -1,21 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"crypto/md5"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"github.com/CoiaPrant/zlog"
 	"io"
 	"io/ioutil"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -69,7 +60,7 @@ type Listen struct {
 
 type User struct {
 	Quota int64
-	Used  int64
+	Used  *int64
 }
 
 type Rule struct {
@@ -139,13 +130,13 @@ func main() {
 
 	api_conf, err := ioutil.ReadFile(ConfigFile)
 	if err != nil {
-		zlog.Fatal("Unable to get local configuration file. (i/o Error) " + err.Error())
+		zlog.Fatal("Unable to get local configuration file. (i/o Error): " + err.Error())
 		return
 	}
 
 	err = json.Unmarshal(api_conf, &API)
 	if err != nil {
-		zlog.Fatal("Unable to get local configuration file. (Parse Error) " + err.Error())
+		zlog.Fatal("Unable to get local configuration file. (Parse Error): " + err.Error())
 		return
 	}
 
@@ -222,29 +213,27 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 		}
 
 		Setting.Users.Lock()
-		for index, v := range NewConfig.Users {
+		for index, value := range NewConfig.Users {
 			if _, ok := Setting.Config.Users[index]; !ok {
-				Setting.Config.Users[index] = v
+				Setting.Config.Users[index] = value
 			}
 		}
 		Setting.Users.Unlock()
 
 		Setting.Rules.Lock()
 		for index, value := range NewConfig.Rules {
-			if value.Status == "Deleted" {
-				DeleteRules(index, value)
-				continue
-			} else if value.Status == "Created" {
-				Setting.Config.Rules[index] = value
-				LoadNewRules(index, value)
-				continue
-			} else {
-				Setting.Config.Rules[index] = NewConfig.Rules[index]
-				continue
-			}
+			Setting.Config.Rules[index] = value
 		}
 		Setting.Rules.Unlock()
 
+		for index, rule := range NewConfig.Rules {
+			switch rule.Status {
+			case "Created":
+				LoadNewRules(index, rule)
+			case "Deleted":
+				DeleteRules(index, rule)
+			}
+		}
 	}()
 	return
 }
@@ -381,7 +370,7 @@ func updateConfig() {
 		"Action":  "UpdateInfo",
 		"NodeID":  API.NodeID,
 		"Token":   md5_encode(API.APIToken),
-		"Info":    NowConfig,
+		"Users":   NowConfig.Users,
 		"Version": version,
 	})
 
@@ -417,12 +406,11 @@ func updateConfig() {
 	Setting.Users.Unlock()
 
 	for index, rule := range NewConfig.Rules {
-		if rule.Status == "Deleted" {
-			DeleteRules(index, rule)
-			continue
-		} else if rule.Status == "Created" {
+		switch rule.Status {
+		case "Created":
 			LoadNewRules(index, rule)
-			continue
+		case "Deleted":
+			DeleteRules(index, rule)
 		}
 	}
 	zlog.Success("Scheduled task update Completed")
@@ -433,13 +421,14 @@ func saveConfig() {
 	defer Setting.Users.Unlock()
 	CloseAllListener()
 	Setting.Rules.Lock()
+	time.Sleep(time.Second)
 	Setting.Users.Lock()
 
 	jsonData, err := json.Marshal(map[string]interface{}{
 		"Action":  "UpdateInfo",
 		"NodeID":  API.NodeID,
 		"Token":   md5_encode(API.APIToken),
-		"Info":    Setting.Config,
+		"Users":   Setting.Config.Users,
 		"Version": version,
 	})
 
@@ -475,128 +464,54 @@ func SendListenError(i string) {
 	}
 }
 
-func sendRequest(url string, data []byte, addHeaders map[string]string, method string) (int, []byte, error) {
-	req, err := http.NewRequest(method, url, bytes.NewReader(data))
-	if err != nil {
-		return 000, nil, err
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36")
-
-	if len(addHeaders) > 0 {
-		for k, v := range addHeaders {
-			req.Header.Add(k, v)
-		}
-	}
-
-	client := &http.Client{}
-	response, err := client.Do(req)
-	if err != nil {
-		return 000, nil, err
-	}
-	defer response.Body.Close()
-
-	statuscode := response.StatusCode
-	resp, err := ioutil.ReadAll(response.Body)
-	return statuscode, resp, err
-}
-
-func md5_encode(s string) string {
-	h := md5.New()
-	h.Write([]byte(s))
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-func copyIO(src, dest net.Conn, r Rule) {
+func copyIO(src, dest net.Conn, r Rule) (int64, error) {
 	defer src.Close()
 	defer dest.Close()
 
 	var b int64
+	var err error
 
-	if r.Speed != 0 {
-		bucket := ratelimit.New(r.Speed * 128 * 1024)
-		b, _ = io.Copy(ratelimit.Writer(dest, bucket), src)
+	if r.Speed == 0 {
+		b, err = io.Copy(dest, src)
 	} else {
-		b, _ = io.Copy(dest, src)
+		bucket := ratelimit.New(r.Speed * 128 * 1024)
+		b, err = io.Copy(ratelimit.Writer(dest, bucket), src)
 	}
-
-	Setting.Users.Lock()
-
-	NowUser := Setting.Config.Users[r.UserID]
-	NowUser.Used += b
-	Setting.Config.Users[r.UserID] = NowUser
-
-	Setting.Users.Unlock()
-
-	if NowUser.Quota <= NowUser.Used {
-		go updateConfig()
-	}
-}
-
-func limitWrite(dest net.Conn, userid string, buf []byte) {
-	var r int
-
-	r, _ = dest.Write(buf)
 
 	go func() {
 		Setting.Users.Lock()
-
-		NowUser := Setting.Config.Users[userid]
-		NowUser.Used += int64(r)
-		Setting.Config.Users[userid] = NowUser
-
+		*Setting.Config.Users[r.UserID].Used += b
+		NowUser := Setting.Config.Users[r.UserID]
 		Setting.Users.Unlock()
 
-		if NowUser.Quota <= NowUser.Used {
+		if NowUser.Quota <= *NowUser.Used {
 			go updateConfig()
 		}
 	}()
+	return b, err
 }
 
-func CreateTLSFile(certFile, keyFile string) {
-	var ip string
-	os.Remove(certFile)
-	os.Remove(keyFile)
-	max := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, _ := rand.Int(rand.Reader, max)
-	subject := pkix.Name{
-		Country:            []string{"US"},
-		Province:           []string{"WDC"},
-		Organization:       []string{"Microsoft Corporation"},
-		OrganizationalUnit: []string{"Microsoft Corporation"},
-		CommonName:         "www.microstft.com",
-	}
+func limitWrite(dest net.Conn, r Rule, buf []byte) (int, error) {
+	var b int
+	var err error
 
-	_, resp, err := sendRequest("https://api.ip.sb/ip", nil, nil, "GET")
-	if err == nil {
-		ip = string(resp)
-		ip = strings.Replace(ip, "\n", "", -1)
+	if r.Speed == 0 {
+		b, err = dest.Write(buf)
 	} else {
-		ip = "127.0.0.1"
+		bucket := ratelimit.New(r.Speed * 128 * 1024)
+		b, err = ratelimit.Writer(dest, bucket).Write(buf)
 	}
+	go func() {
+		Setting.Users.Lock()
+		*Setting.Config.Users[r.UserID].Used += int64(b)
+		NowUser := Setting.Config.Users[r.UserID]
+		Setting.Users.Unlock()
 
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject:      subject,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses:  []net.IP{net.ParseIP(ip)},
-	}
-
-	pk, _ := rsa.GenerateKey(rand.Reader, 2048)
-
-	derBytes, _ := x509.CreateCertificate(rand.Reader, &template, &template, &pk.PublicKey, pk)
-	certOut, _ := os.Create(certFile)
-	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	certOut.Close()
-
-	keyOut, _ := os.Create(keyFile)
-	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(pk)})
-	keyOut.Close()
-	zlog.Success("Created the ssl certfile,location: ", certFile)
-	zlog.Success("Created the ssl keyfile,location: ", keyFile)
+		if NowUser.Quota <= *NowUser.Used {
+			go updateConfig()
+		}
+	}()
+	return b, err
 }
 
 func ParseForward(r Rule) string {
