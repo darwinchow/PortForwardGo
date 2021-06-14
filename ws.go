@@ -87,10 +87,10 @@ func WS_Handle(i string, ws *websocket.Conn) {
 	}
 
 	if r.ProxyProtocolVersion != 0 {
-		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), ws.LocalAddr(),&Addr{
+		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), &Addr{
 			NetworkType:   ws.Request().Header.Get("X-Forward-Protocol"),
 			NetworkString: ws.Request().Header.Get("X-Forward-Address"),
-		}).Format()
+		}, ws.LocalAddr()).Format()
 		if err == nil {
 			limitWrite(proxy, r, header)
 		}

@@ -72,7 +72,7 @@ func tcp_handleRequest(conn net.Conn, index string) {
 	}
 
 	if r.ProxyProtocolVersion != 0 {
-		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.LocalAddr(), conn.RemoteAddr()).Format()
+		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr()).Format()
 		if err == nil {
 			limitWrite(proxy, r, header)
 		}
