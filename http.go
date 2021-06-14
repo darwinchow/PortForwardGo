@@ -110,7 +110,7 @@ func http_handle(conn net.Conn) {
 	}
 
 	if r.ProxyProtocolVersion != 0 {
-		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr()).Format()
+		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.LocalAddr(), conn.RemoteAddr()).Format()
 		if err == nil {
 			limitWrite(proxy, r, header)
 		}
