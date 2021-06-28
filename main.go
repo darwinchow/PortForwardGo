@@ -27,8 +27,6 @@ var Setting FullConfig
 var Shared SharePort
 var version string
 
-var ConfigFile string
-var LogFile string
 var certFile string
 var keyFile string
 
@@ -81,6 +79,8 @@ type APIConfig struct {
 }
 
 func main() {
+	var ConfigFile string
+	var LogFile string
 	{
 		Setting.Listener = cmap.New()
 		Shared.HTTP = cmap.New()

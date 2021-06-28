@@ -5,6 +5,8 @@ import (
 	"github.com/CoiaPrant/zlog"
 	"net"
 	"time"
+
+	cmap "github.com/orcaman/concurrent-map"
 )
 
 type UDPConn struct {
@@ -109,7 +111,7 @@ func DeleteUDPRules(i string, r Rule) {
 
 func AcceptUDP(serv *net.UDPConn, index string) {
 
-	table := make(map[string]*UDPConn)
+	table := cmap.New()
 	for {
 		buf := make([]byte, 32*1024)
 
@@ -124,17 +126,17 @@ func AcceptUDP(serv *net.UDPConn, index string) {
 		go func() {
 			buf = buf[:n]
 
-			if d, ok := table[addr.String()]; ok {
-				if d.Connected {
-					d.Cache <- buf
+			if d, ok := table.Get(addr.String()); ok {
+				if d.(UDPConn).Connected {
+					d.(UDPConn).Cache <- buf
 					return
 				} else {
-					delete(table, addr.String())
+					table.Remove(addr.String())
 				}
 			}
 
 			conn := NewUDPConn(serv, addr)
-			table[addr.String()] = conn
+			table.Set(addr.String(), conn)
 			conn.Cache <- buf
 
 			udp_handleRequest(conn, index)
