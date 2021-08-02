@@ -7,24 +7,22 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-func LoadWSCRules(i string) {
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.WSC[i]; ok {
+func LoadWSCRules(i string, r Rule) {
+	if Setting.Listener.Has(i) {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
 
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
+	tcpaddress, err := net.ResolveTCPAddr("tcp", ":"+r.Listen)
+	if err != nil {
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket Client) Error: ", err)
+		SendListenError(i)
+		return
+	}
 
-	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 
 	if err == nil {
-		Setting.Listener.Turn.Lock()
-		Setting.Listener.WSC[i] = ln
-		Setting.Listener.Turn.Unlock()
+		Setting.Listener.Set(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket Client) ", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket Client) Error:", err)
@@ -46,18 +44,11 @@ func LoadWSCRules(i string) {
 	}
 }
 
-func DeleteWSCRules(i string) {
-	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.WSC[i]; ok {
-		Setting.Listener.WSC[i].Close()
-		delete(Setting.Listener.WSC, i)
+func DeleteWSCRules(i string, r Rule) {
+	if ln, ok := Setting.Listener.Get(i); ok {
+		Setting.Listener.Remove(i)
+		ln.(*net.TCPListener).Close()
 	}
-	Setting.Listener.Turn.Unlock()
-
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
 
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket Client)", r.Listen, " => ", ParseForward(r))
 }

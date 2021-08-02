@@ -1,21 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"crypto/md5"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/json"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"github.com/CoiaPrant/zlog"
 	"io"
 	"io/ioutil"
-	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -27,35 +18,28 @@ import (
 	"time"
 
 	"gitee.com/kzquu/wego/util/ratelimit"
+	cmap "github.com/orcaman/concurrent-map"
 	kcp "github.com/xtaci/kcp-go"
 )
 
-var Setting CSafeRule
+var API APIConfig
+var Setting FullConfig
+var Shared SharePort
 var version string
 
-var ConfigFile string
-var LogFile string
 var certFile string
 var keyFile string
 
-type CSafeRule struct {
-	Listener Listener
+type FullConfig struct {
+	Listener cmap.ConcurrentMap
 	Config   Config
 	Rules    sync.RWMutex
 	Users    sync.Mutex
 }
 
-type Listener struct {
-	Turn  sync.RWMutex
-	TCP   map[string]*net.TCPListener
-	UDP   map[string]*net.UDPConn
-	KCP   map[string]*kcp.Listener
-	HTTP  map[string]string
-	HTTPS map[string]string
-	WS    map[string]*net.TCPListener
-	WSC   map[string]*net.TCPListener
-	WSS   map[string]*net.TCPListener
-	WSSC  map[string]*net.TCPListener
+type SharePort struct {
+	HTTP  cmap.ConcurrentMap
+	HTTPS cmap.ConcurrentMap
 }
 
 type Config struct {
@@ -74,7 +58,7 @@ type Listen struct {
 
 type User struct {
 	Quota int64
-	Used  int64
+	Used  *int64
 }
 
 type Rule struct {
@@ -94,9 +78,15 @@ type APIConfig struct {
 	NodeID   int
 }
 
-var apic APIConfig
-
 func main() {
+	var ConfigFile string
+	var LogFile string
+	{
+		Setting.Listener = cmap.New()
+		Shared.HTTP = cmap.New()
+		Shared.HTTPS = cmap.New()
+	}
+
 	{
 		flag.StringVar(&ConfigFile, "config", "config.json", "The config file location")
 		flag.StringVar(&certFile, "certfile", "public.pem", "The ssl cert file location")
@@ -112,15 +102,9 @@ func main() {
 	}
 
 	{
-		Setting.Listener.TCP = make(map[string]*net.TCPListener)
-		Setting.Listener.UDP = make(map[string]*net.UDPConn)
-		Setting.Listener.KCP = make(map[string]*kcp.Listener)
-		Setting.Listener.HTTP = make(map[string]string)
-		Setting.Listener.HTTPS = make(map[string]string)
-		Setting.Listener.WS = make(map[string]*net.TCPListener)
-		Setting.Listener.WSC = make(map[string]*net.TCPListener)
-		Setting.Listener.WSS = make(map[string]*net.TCPListener)
-		Setting.Listener.WSSC = make(map[string]*net.TCPListener)
+		Setting.Listener = cmap.New()
+		Shared.HTTP = cmap.New()
+		Shared.HTTPS = cmap.New()
 	}
 
 	if LogFile != "" {
@@ -144,29 +128,31 @@ func main() {
 
 	zlog.Info("Node Version: ", version)
 
-	apif, err := ioutil.ReadFile(ConfigFile)
+	api_conf, err := ioutil.ReadFile(ConfigFile)
 	if err != nil {
-		zlog.Fatal("Cannot read the config file. (io Error) " + err.Error())
+		zlog.Fatal("Unable to get local configuration file. (i/o Error): " + err.Error())
+		return
 	}
 
-	err = json.Unmarshal(apif, &apic)
+	err = json.Unmarshal(api_conf, &API)
 	if err != nil {
-		zlog.Fatal("Cannot read the config file. (Parse Error) " + err.Error())
+		zlog.Fatal("Unable to get local configuration file. (Parse Error): " + err.Error())
+		return
 	}
 
-	zlog.Info("API URL: ", apic.APIAddr)
+	zlog.Info("API URL: ", API.APIAddr)
 	getConfig()
 
 	go func() {
 		if Setting.Config.EnableAPI == true {
-			zlog.Info("[HTTP API] Listening ", Setting.Config.APIPort, " Path: /", md5_encode(apic.APIToken), " Method:POST")
+			zlog.Info("[HTTP API] Listening ", Setting.Config.APIPort, " Path: /", md5_encode(API.APIToken), " Method:POST")
 			route := http.NewServeMux()
 			route.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(404)
 				io.WriteString(w, Page404)
 				return
 			})
-			route.HandleFunc("/"+md5_encode(apic.APIToken), NewAPIConnect)
+			route.HandleFunc("/"+md5_encode(API.APIToken), NewAPIConnect)
 			err := http.ListenAndServe(":"+Setting.Config.APIPort, route)
 			if err != nil {
 				zlog.Error("[HTTP API] ", err)
@@ -227,29 +213,27 @@ func NewAPIConnect(w http.ResponseWriter, r *http.Request) {
 		}
 
 		Setting.Users.Lock()
-		for index, v := range NewConfig.Users {
+		for index, value := range NewConfig.Users {
 			if _, ok := Setting.Config.Users[index]; !ok {
-				Setting.Config.Users[index] = v
+				Setting.Config.Users[index] = value
 			}
 		}
 		Setting.Users.Unlock()
 
 		Setting.Rules.Lock()
-		for index, _ := range NewConfig.Rules {
-			if NewConfig.Rules[index].Status == "Deleted" {
-				DeleteRules(index)
-				continue
-			} else if NewConfig.Rules[index].Status == "Created" {
-				Setting.Config.Rules[index] = NewConfig.Rules[index]
-				LoadNewRules(index)
-				continue
-			} else {
-				Setting.Config.Rules[index] = NewConfig.Rules[index]
-				continue
-			}
+		for index, value := range NewConfig.Rules {
+			Setting.Config.Rules[index] = value
 		}
 		Setting.Rules.Unlock()
 
+		for index, rule := range NewConfig.Rules {
+			switch rule.Status {
+			case "Created":
+				LoadNewRules(index, rule)
+			case "Deleted":
+				DeleteRules(index, rule)
+			}
+		}
 	}()
 	return
 }
@@ -270,115 +254,106 @@ func LoadListen() {
 		}
 	}
 }
+
 func CloseAllListener() {
-	Setting.Listener.Turn.Lock()
-	for _, ln := range Setting.Listener.TCP {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.UDP {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.KCP {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.WS {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.WSC {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.WSS {
-		ln.Close()
-	}
-	for _, ln := range Setting.Listener.WSSC {
-		ln.Close()
-	}
-	Setting.Listener.Turn.Unlock()
-}
-
-func LoadNewRules(i string) {
-	Protocol := Setting.Config.Rules[i].Protocol
-
-	switch Protocol {
-	case "tcp":
-		go LoadTCPRules(i)
-	case "udp":
-		go LoadUDPRules(i)
-	case "kcp":
-		go LoadKCPRules(i)
-	case "http":
-		go LoadHttpRules(i)
-	case "https":
-		go LoadHttpsRules(i)
-	case "ws":
-		go LoadWSRules(i)
-	case "wsc":
-		go LoadWSCRules(i)
-	case "wss":
-		go LoadWSSRules(i)
-	case "wssc":
-		go LoadWSSCRules(i)
+	for item := range Setting.Listener.IterBuffered() {
+		if ln, ok := item.Val.(*net.TCPListener); ok {
+			ln.Close()
+		}
+		if ln, ok := item.Val.(*net.UDPConn); ok {
+			ln.Close()
+		}
+		if ln, ok := item.Val.(*kcp.Listener); ok {
+			ln.Close()
+		}
 	}
 }
 
-func DeleteRules(i string) {
-	if _, ok := Setting.Config.Rules[i]; !ok {
-		return
+func LoadNewRules(i string, r Rule) {
+	switch r.Protocol {
+	case "tcp":
+		go LoadTCPRules(i, r)
+	case "udp":
+		go LoadUDPRules(i, r)
+	case "kcp":
+		go LoadKCPRules(i, r)
+	case "http":
+		go LoadHttpRules(i, r)
+	case "https":
+		go LoadHttpsRules(i, r)
+	case "ws":
+		go LoadWSRules(i, r)
+	case "wsc":
+		go LoadWSCRules(i, r)
+	case "wss":
+		go LoadWSSRules(i, r)
+	case "wssc":
+		go LoadWSSCRules(i, r)
+	}
+}
+
+func DeleteRules(i string, r Rule) {
+	switch r.Protocol {
+	case "tcp":
+		go DeleteTCPRules(i, r)
+	case "udp":
+		go DeleteUDPRules(i, r)
+	case "kcp":
+		go DeleteKCPRules(i, r)
+	case "http":
+		go DeleteHttpRules(i, r)
+	case "https":
+		go DeleteHttpsRules(i, r)
+	case "ws":
+		go DeleteWSRules(i, r)
+	case "wsc":
+		go DeleteWSCRules(i, r)
+	case "wss":
+		go DeleteWSSRules(i, r)
+	case "wssc":
+		go DeleteWSSCRules(i, r)
 	}
 
-	Protocol := Setting.Config.Rules[i].Protocol
-	switch Protocol {
-	case "tcp":
-		go DeleteTCPRules(i)
-	case "udp":
-		go DeleteUDPRules(i)
-	case "kcp":
-		go DeleteKCPRules(i)
-	case "http":
-		go DeleteHttpRules(i)
-	case "https":
-		go DeleteHttpsRules(i)
-	case "ws":
-		go DeleteWSRules(i)
-	case "wsc":
-		go DeleteWSCRules(i)
-	case "wss":
-		go DeleteWSSRules(i)
-	case "wssc":
-		go DeleteWSSCRules(i)
-	}
+	delete(Setting.Config.Rules, i)
 }
 
 func getConfig() {
 	var NewConfig Config
-	jsonData, _ := json.Marshal(map[string]interface{}{
+	jsonData, err := json.Marshal(map[string]interface{}{
 		"Action":  "GetConfig",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
 		"Version": version,
 	})
-	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+
+	if err != nil {
+		zlog.Fatal("Error submitting information. (Parse Error): " + err.Error())
+		return
+	}
+
+	status, data, err := sendRequest(API.APIAddr, jsonData, nil, "POST")
 	if status == 503 {
-		zlog.Fatal("The remote server returned an error message: ", string(confF))
+		zlog.Fatal("The remote server returned an error message: ", string(data))
 		return
 	}
 
 	if err != nil {
-		zlog.Fatal("Cannot read the online config file. (NetWork Error) " + err.Error())
+		zlog.Fatal("Unable to get configuration file. (NetWork Error): " + err.Error())
 		return
 	}
 
-	err = json.Unmarshal(confF, &NewConfig)
+	err = json.Unmarshal(data, &NewConfig)
 	if err != nil {
-		zlog.Fatal("Cannot read the port forward config file. (Parse Error) " + err.Error())
+		zlog.Fatal("Unable to get configuration file. (Parse Error): " + err.Error())
 		return
 	}
+
 	Setting.Config = NewConfig
 	zlog.Info("Update Cycle: ", Setting.Config.UpdateInfoCycle, " seconds")
 	LoadListen()
 
-	for index, _ := range NewConfig.Rules {
-		LoadNewRules(index)
+	for index, value := range NewConfig.Rules {
+		LoadNewRules(index, value)
 	}
 }
 
@@ -391,23 +366,30 @@ func updateConfig() {
 	NowConfig := Setting.Config
 	Setting.Rules.RUnlock()
 
-	jsonData, _ := json.Marshal(map[string]interface{}{
+	jsonData, err := json.Marshal(map[string]interface{}{
 		"Action":  "UpdateInfo",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
-		"Info":    &NowConfig,
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
+		"Users":   NowConfig.Users,
 		"Version": version,
 	})
 
-	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+	if err != nil {
+		Setting.Users.Unlock()
+		zlog.Error("Error submitting information. (Parse Error): " + err.Error())
+		return
+	}
+
+	status, confF, err := sendRequest(API.APIAddr, jsonData, nil, "POST")
 	if status == 503 {
 		Setting.Users.Unlock()
 		zlog.Error("Scheduled task update error,The remote server returned an error message: ", string(confF))
 		return
 	}
+
 	if err != nil {
 		Setting.Users.Unlock()
-		zlog.Error("Scheduled task update error: ", err)
+		zlog.Error("Scheduled task update network error: ", err)
 		return
 	}
 
@@ -423,13 +405,12 @@ func updateConfig() {
 	Setting.Rules.Unlock()
 	Setting.Users.Unlock()
 
-	for index, rule := range Setting.Config.Rules {
-		if rule.Status == "Deleted" {
-			DeleteRules(index)
-			continue
-		} else if rule.Status == "Created" {
-			LoadNewRules(index)
-			continue
+	for index, rule := range NewConfig.Rules {
+		switch rule.Status {
+		case "Created":
+			LoadNewRules(index, rule)
+		case "Deleted":
+			DeleteRules(index, rule)
 		}
 	}
 	zlog.Success("Scheduled task update Completed")
@@ -440,18 +421,25 @@ func saveConfig() {
 	defer Setting.Users.Unlock()
 	CloseAllListener()
 	Setting.Rules.Lock()
+	time.Sleep(time.Second)
 	Setting.Users.Lock()
 
-	jsonData, _ := json.Marshal(map[string]interface{}{
-		"Action":  "SaveConfig",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
-		"Info":    &Setting.Config,
+	jsonData, err := json.Marshal(map[string]interface{}{
+		"Action":  "UpdateInfo",
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
+		"Users":   Setting.Config.Users,
 		"Version": version,
 	})
-	status, confF, err := sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+
+	if err != nil {
+		zlog.Error("Error submitting information. (Parse Error): " + err.Error())
+		return
+	}
+
+	status, data, err := sendRequest(API.APIAddr, jsonData, nil, "POST")
 	if status == 503 {
-		zlog.Error("Save config error,The remote server returned an error message , message: ", string(confF))
+		zlog.Error("Save config error,The remote server returned an error message: ", string(data))
 		return
 	}
 	if err != nil {
@@ -463,92 +451,67 @@ func saveConfig() {
 }
 
 func SendListenError(i string) {
-	jsonData, _ := json.Marshal(map[string]interface{}{
+	jsonData, err := json.Marshal(map[string]interface{}{
 		"Action":  "Error",
-		"NodeID":  apic.NodeID,
-		"Token":   md5_encode(apic.APIToken),
+		"NodeID":  API.NodeID,
+		"Token":   md5_encode(API.APIToken),
 		"Version": version,
 		"RuleID":  i,
 	})
-	sendRequest(apic.APIAddr, bytes.NewReader(jsonData), nil, "POST")
+
+	if err == nil {
+		sendRequest(API.APIAddr, jsonData, nil, "POST")
+	}
 }
 
-func sendRequest(url string, body io.Reader, addHeaders map[string]string, method string) (statuscode int, resp []byte, err error) {
-	req, err := http.NewRequest(method, url, body)
-	if err != nil {
-		return
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36")
-
-	if len(addHeaders) > 0 {
-		for k, v := range addHeaders {
-			req.Header.Add(k, v)
-		}
-	}
-
-	client := &http.Client{}
-	response, err := client.Do(req)
-	if err != nil {
-		return
-	}
-	defer response.Body.Close()
-
-	statuscode = response.StatusCode
-	resp, err = ioutil.ReadAll(response.Body)
-	return
-}
-
-func md5_encode(s string) string {
-	h := md5.New()
-	h.Write([]byte(s))
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-func copyIO(src, dest net.Conn, r Rule) {
+func copyIO(src, dest net.Conn, r Rule) (int64, error) {
 	defer src.Close()
 	defer dest.Close()
 
 	var b int64
+	var err error
 
-	if r.Speed != 0 {
-		bucket := ratelimit.New(r.Speed * 128 * 1024)
-		b, _ = io.Copy(ratelimit.Writer(dest, bucket), src)
+	if r.Speed == 0 {
+		b, err = io.Copy(dest, src)
 	} else {
-		b, _ = io.Copy(dest, src)
+		bucket := ratelimit.New(r.Speed * 128 * 1024)
+		b, err = io.Copy(ratelimit.Writer(dest, bucket), src)
 	}
-
-	Setting.Users.Lock()
-
-	NowUser := Setting.Config.Users[r.UserID]
-	NowUser.Used += b
-	Setting.Config.Users[r.UserID] = NowUser
-
-	Setting.Users.Unlock()
-
-	if NowUser.Quota <= NowUser.Used {
-		go updateConfig()
-	}
-}
-
-func limitWrite(dest net.Conn, userid string, buf []byte) {
-	var r int
-
-	r, _ = dest.Write(buf)
 
 	go func() {
 		Setting.Users.Lock()
-
-		NowUser := Setting.Config.Users[userid]
-		NowUser.Used += int64(r)
-		Setting.Config.Users[userid] = NowUser
-
+		*Setting.Config.Users[r.UserID].Used += b
+		NowUser := Setting.Config.Users[r.UserID]
 		Setting.Users.Unlock()
 
-		if NowUser.Quota <= NowUser.Used {
+		if NowUser.Quota <= *NowUser.Used {
 			go updateConfig()
 		}
 	}()
+	return b, err
+}
+
+func limitWrite(dest net.Conn, r Rule, buf []byte) (int, error) {
+	var b int
+	var err error
+
+	if r.Speed == 0 {
+		b, err = dest.Write(buf)
+	} else {
+		bucket := ratelimit.New(r.Speed * 128 * 1024)
+		b, err = ratelimit.Writer(dest, bucket).Write(buf)
+	}
+	go func() {
+		Setting.Users.Lock()
+		*Setting.Config.Users[r.UserID].Used += int64(b)
+		NowUser := Setting.Config.Users[r.UserID]
+		Setting.Users.Unlock()
+
+		if NowUser.Quota <= *NowUser.Used {
+			go updateConfig()
+		}
+	}()
+	return b, err
 }
 
 func ParseForward(r Rule) string {
@@ -557,50 +520,4 @@ func ParseForward(r Rule) string {
 	}
 
 	return r.RemoteHost + ":" + strconv.Itoa(r.RemotePort)
-}
-
-func CreateTLSFile(certFile, keyFile string) {
-	var ip string
-	os.Remove(certFile)
-	os.Remove(keyFile)
-	max := new(big.Int).Lsh(big.NewInt(1), 128)
-	serialNumber, _ := rand.Int(rand.Reader, max)
-	subject := pkix.Name{
-		Country:            []string{"US"},
-		Province:           []string{"WDC"},
-		Organization:       []string{"Microsoft Corporation"},
-		OrganizationalUnit: []string{"Microsoft Corporation"},
-		CommonName:         "www.microstft.com",
-	}
-
-	_, resp, err := sendRequest("https://api.ip.sb/ip", nil, nil, "GET")
-	if err == nil {
-		ip = string(resp)
-		ip = strings.Replace(ip, "\n", "", -1)
-	} else {
-		ip = "127.0.0.1"
-	}
-
-	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject:      subject,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		IPAddresses:  []net.IP{net.ParseIP(ip)},
-	}
-
-	pk, _ := rsa.GenerateKey(rand.Reader, 2048)
-
-	derBytes, _ := x509.CreateCertificate(rand.Reader, &template, &template, &pk.PublicKey, pk)
-	certOut, _ := os.Create(certFile)
-	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	certOut.Close()
-
-	keyOut, _ := os.Create(keyFile)
-	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(pk)})
-	keyOut.Close()
-	zlog.Success("Created the ssl certfile,location: ", certFile)
-	zlog.Success("Created the ssl keyfile,location: ", keyFile)
 }

@@ -29,6 +29,8 @@ github.com/klauspost/cpuid/v2 v2.0.2 h1:pd2FBxFydtPn2ywTLStbFg9CJKrojATnpeJWSP7Y
 github.com/klauspost/cpuid/v2 v2.0.2/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
 github.com/klauspost/reedsolomon v1.9.11 h1:n2kipJFo+CPqg7fH988XJXjqEyj14RJ8BYj7UayxPNg=
 github.com/klauspost/reedsolomon v1.9.11/go.mod h1:nLvuzNvy1ZDNQW30IuMc2ZWCbiqrJgdLoUS2X8HAUVg=
+github.com/orcaman/concurrent-map v0.0.0-20210501183033-44dafcb38ecc h1:Ak86L+yDSOzKFa7WM5bf5itSOo1e3Xh8bm5YCMUXIjQ=
+github.com/orcaman/concurrent-map v0.0.0-20210501183033-44dafcb38ecc/go.mod h1:Lu3tH6HLW3feq74c2GC+jIMS/K2CFcDWnWD9XkenwhI=
 github.com/pires/go-proxyproto v0.4.1 h1:30QkyOjKU3FcTLiu1359sSQ7ml56wpM4i/uViqODSsI=
 github.com/pires/go-proxyproto v0.4.1/go.mod h1:Odh9VFOZJCf9G8cLW5o435Xf1J95Jw9Gw5rnCjcwzAY=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=

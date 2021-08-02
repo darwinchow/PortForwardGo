@@ -1,30 +1,30 @@
 package main
 
 import (
-	"github.com/CoiaPrant/zlog"
+	"crypto/tls"
 	"net"
+
+	"github.com/CoiaPrant/zlog"
 
 	"golang.org/x/net/websocket"
 )
 
-func LoadWSSCRules(i string) {
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.WSSC[i]; ok {
+func LoadWSSCRules(i string, r Rule) {
+	if Setting.Listener.Has(i) {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
 
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
+	tcpaddress, err := net.ResolveTCPAddr("tcp", ":"+r.Listen)
+	if err != nil {
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS Client) Error: ", err)
+		SendListenError(i)
+		return
+	}
 
-	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 
 	if err == nil {
-		Setting.Listener.Turn.Lock()
-		Setting.Listener.WSSC[i] = ln
-		Setting.Listener.Turn.Unlock()
+		Setting.Listener.Set(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket TLS Client) ", r.Listen, " => ", ParseForward(r))
 	} else {
 		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS Client) Error:", err)
@@ -46,18 +46,11 @@ func LoadWSSCRules(i string) {
 	}
 }
 
-func DeleteWSSCRules(i string) {
-	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.WSSC[i]; ok {
-		Setting.Listener.WSSC[i].Close()
-		delete(Setting.Listener.WSSC, i)
+func DeleteWSSCRules(i string, r Rule) {
+	if ln, ok := Setting.Listener.Get(i); ok {
+		Setting.Listener.Remove(i)
+		ln.(*net.TCPListener).Close()
 	}
-	Setting.Listener.Turn.Unlock()
-
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
 
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket TLS Client)", r.Listen, " => ", ParseForward(r))
 }
@@ -73,6 +66,7 @@ func wssc_handleRequest(conn net.Conn, index string) {
 	}
 
 	ws_config, err := websocket.NewConfig("wss://"+ParseForward(r)+"/ws/", "https://"+ParseForward(r)+"/ws/")
+	ws_config.TlsConfig = &tls.Config{InsecureSkipVerify: true}
 	if err != nil {
 		conn.Close()
 		return

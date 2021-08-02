@@ -10,26 +10,24 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-func LoadWSSRules(i string) {
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.WSS[i]; ok {
+func LoadWSSRules(i string, r Rule) {
+	if Setting.Listener.Has(i) {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
 
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
+	tcpaddress, err := net.ResolveTCPAddr("tcp", ":"+r.Listen)
+	if err != nil {
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS) Error: ", err)
+		SendListenError(i)
+		return
+	}
 
-	tcpaddress, _ := net.ResolveTCPAddr("tcp", ":"+r.Listen)
 	ln, err := net.ListenTCP("tcp", tcpaddress)
 	if err == nil {
-		Setting.Listener.Turn.Lock()
-		Setting.Listener.WSS[i] = ln
-		Setting.Listener.Turn.Unlock()
+		Setting.Listener.Set(i, ln)
 		zlog.Info("Loaded [", r.UserID, "][", i, "] (WebSocket TLS)", r.Listen, " => ", ParseForward(r))
 	} else {
-		zlog.Error("Load failed [", r.UserID, "][", i, "] (Websocket TLS) Error: ", err)
+		zlog.Error("Load failed [", r.UserID, "][", i, "] (WebSocket TLS) Error: ", err)
 		SendListenError(i)
 		return
 	}
@@ -48,18 +46,11 @@ func LoadWSSRules(i string) {
 	http.ServeTLS(ln, Router, certFile, keyFile)
 }
 
-func DeleteWSSRules(i string) {
-	Setting.Listener.Turn.Lock()
-	if _, ok := Setting.Listener.WSS[i]; ok {
-		Setting.Listener.WSS[i].Close()
-		delete(Setting.Listener.WSS, i)
+func DeleteWSSRules(i string, r Rule) {
+	if ln, ok := Setting.Listener.Get(i); ok {
+		Setting.Listener.Remove(i)
+		ln.(*net.TCPListener).Close()
 	}
-	Setting.Listener.Turn.Unlock()
-
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
 
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (WebSocket TLS)", r.Listen, " => ", ParseForward(r))
 }
@@ -85,9 +76,9 @@ func WSS_Handle(i string, ws *websocket.Conn) {
 		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), &Addr{
 			NetworkType:   ws.Request().Header.Get("X-Forward-Protocol"),
 			NetworkString: ws.Request().Header.Get("X-Forward-Address"),
-		}, proxy.LocalAddr()).Format()
+		}, ws.LocalAddr()).Format()
 		if err == nil {
-			limitWrite(proxy, r.UserID, header)
+			limitWrite(proxy, r, header)
 		}
 	}
 

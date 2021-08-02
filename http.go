@@ -30,34 +30,17 @@ func HttpInit(port string) {
 	}
 }
 
-func LoadHttpRules(i string) {
-	Setting.Rules.RLock()
-	r := Setting.Config.Rules[i]
-	Setting.Rules.RUnlock()
-
-	Setting.Listener.Turn.RLock()
-	if _, ok := Setting.Listener.HTTP[strings.ToLower(r.Listen)]; ok {
+func LoadHttpRules(i string, r Rule) {
+	if Shared.HTTP.Has(strings.ToLower(r.Listen)) {
 		return
 	}
-	Setting.Listener.Turn.RUnlock()
 
-	Setting.Listener.Turn.Lock()
-	Setting.Listener.HTTP[strings.ToLower(r.Listen)] = i
-	Setting.Listener.Turn.Unlock()
-
+	Shared.HTTP.Set(strings.ToLower(r.Listen), i)
 	zlog.Info("Loaded [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
-func DeleteHttpRules(i string) {
-	Setting.Rules.Lock()
-	r := Setting.Config.Rules[i]
-	delete(Setting.Config.Rules, i)
-	Setting.Rules.Unlock()
-
-	Setting.Listener.Turn.Lock()
-	delete(Setting.Listener.HTTP, strings.ToLower(r.Listen))
-	Setting.Listener.Turn.Unlock()
-
+func DeleteHttpRules(i string, r Rule) {
+	Shared.HTTP.Remove(strings.ToLower(r.Listen))
 	zlog.Info("Deleted [", r.UserID, "][", i, "] (HTTP)", r.Listen, " => ", ParseForward(r))
 }
 
@@ -95,7 +78,8 @@ func http_handle(conn net.Conn) {
 		return
 	}
 
-	i, ok := Setting.Listener.HTTP[hostname]
+	value, _ := Shared.HTTP.Get(hostname)
+	i, ok := value.(string)
 	if !ok {
 		conn.Write([]byte(HttpStatus(503)))
 		conn.Write([]byte("\n"))
@@ -109,33 +93,33 @@ func http_handle(conn net.Conn) {
 	Setting.Rules.RUnlock()
 
 	if r.Status != "Active" && r.Status != "Created" {
-		limitWrite(conn, r.UserID, []byte(HttpStatus(503)))
-		limitWrite(conn, r.UserID, []byte("\n"))
-		limitWrite(conn, r.UserID, []byte(Page503))
+		limitWrite(conn, r, []byte(HttpStatus(503)))
+		limitWrite(conn, r, []byte("\n"))
+		limitWrite(conn, r, []byte(Page503))
 		conn.Close()
 		return
 	}
 
 	proxy, error := net.Dial("tcp", ParseForward(r))
 	if error != nil {
-		limitWrite(conn, r.UserID, []byte(HttpStatus(522)))
-		limitWrite(conn, r.UserID, []byte("\n"))
-		limitWrite(conn, r.UserID, []byte(Page522))
+		limitWrite(conn, r, []byte(HttpStatus(522)))
+		limitWrite(conn, r, []byte("\n"))
+		limitWrite(conn, r, []byte(Page522))
 		conn.Close()
 		return
 	}
 
 	if r.ProxyProtocolVersion != 0 {
-		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(), conn.LocalAddr()).Format()
+		header, err := proxyprotocol.HeaderProxyFromAddrs(byte(r.ProxyProtocolVersion), conn.RemoteAddr(),conn.LocalAddr()).Format()
 		if err == nil {
-			limitWrite(proxy, r.UserID, header)
+			limitWrite(proxy, r, header)
 		}
 	}
 
 	for element := readLines.Front(); element != nil; element = element.Next() {
 		line := element.Value.(string)
-		limitWrite(proxy, r.UserID, []byte(line))
-		limitWrite(proxy, r.UserID, []byte("\n"))
+		limitWrite(proxy, r, []byte(line))
+		limitWrite(proxy, r, []byte("\n"))
 	}
 
 	go copyIO(conn, proxy, r)
